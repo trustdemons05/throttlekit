@@ -30,9 +30,18 @@ export type { TwoTierStoreOptions } from './stores/two-tier.js';
 
 export { createTokenBucketStrategy, tokenBucketConsume } from './strategies/token-bucket.js';
 export { createFixedWindowStrategy } from './strategies/fixed-window.js';
+export { createSlidingLogStrategy } from './strategies/sliding-window-log.js';
+export { createSlidingCounterStrategy } from './strategies/sliding-window-counter.js';
 export { createGcraStrategy, gcraLua } from './strategies/gcra.js';
 export { createLeakyBucket } from './strategies/leaky-bucket.js';
 export { createAdaptiveConcurrency } from './strategies/adaptive-concurrency.js';
+export { createSlidingWindowStrategy, slidingWindowConsume } from './strategies/sliding-window.js';
+
+// Convenience aliases (also exported under createXxx names above)
+export { createGcraStrategy as gcra } from './strategies/gcra.js';
+export { createLeakyBucket as leakyBucket } from './strategies/leaky-bucket.js';
+export { createAdaptiveConcurrency as adaptiveConcurrency } from './strategies/adaptive-concurrency.js';
+export { createTwoTierStore as twoTier } from './stores/two-tier.js';
 
 export { clientIp } from './utils/client-ip.js';
 export type { ClientIpOptions } from './utils/client-ip.js';

@@ -83,7 +83,7 @@ export interface Limiter {
  */
 export interface RateLimitOptions {
   /** Rate-limiting strategy */
-  strategy: 'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter';
+  strategy: 'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter' | 'sliding-window';
   /** Store implementation (defaults to MemoryStore) */
   store?: Store;
   /** Clock implementation (defaults to SystemClock) */

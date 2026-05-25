@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "Pluggable, framework-agnostic rate-limiting toolkit with 7 algorithms, clock-injected deterministic testing, and zero required dependencies.",
   "license": "MIT",
+  "keywords": ["rate-limit", "rate-limiter", "throttle", "token-bucket", "sliding-window", "gcra", "express", "middleware", "redis"],
+  "repository": { "type": "git", "url": "git+https://github.com/trustdemons05/throttlekit.git" },
+  "homepage": "https://github.com/trustdemons05/throttlekit#readme",
+  "bugs": { "url": "https://github.com/trustdemons05/throttlekit/issues" },
   "type": "module",
   "exports": {
     ".":          { "import": "./dist/index.js",            "require": "./dist/index.cjs" },
@@ -42,6 +46,7 @@
       "optional": true
     }
   },
+  "sideEffects": false,
   "engines": {
     "node": ">=18.0.0"
   }

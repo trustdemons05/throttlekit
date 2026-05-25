@@ -150,7 +150,7 @@ export function createTokenBucketStrategy(options: {
           limit: capacity,
           remaining: capacity,
           resetAt: clock.now(),
-          retryAfterMs: Infinity,
+        retryAfterMs: 2147483647,
         };
       }
 

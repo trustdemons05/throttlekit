@@ -1,17 +1,20 @@
 /**
  * Benchmark: Strategy algorithm throughput.
  *
- * Tests raw strategy.apply() performance for all 4 strategies.
+ * Tests raw strategy.apply() performance for all built-in strategies.
  * Uses ManualClock to avoid real time drift. Measures operations
  * per second and nanoseconds per operation using perf_hooks.
  */
 
 import { performance } from 'node:perf_hooks';
-import { createTokenBucketStrategy } from '../src/strategies/token-bucket.js';
-import { createFixedWindowStrategy } from '../src/strategies/fixed-window.js';
-import { createSlidingLogStrategy } from '../src/strategies/sliding-window-log.js';
-import { createSlidingCounterStrategy } from '../src/strategies/sliding-window-counter.js';
-import { ManualClock } from '../src/core/clock.js';
+import {
+  createTokenBucketStrategy,
+  createFixedWindowStrategy,
+  createSlidingLogStrategy,
+  createSlidingCounterStrategy,
+  createSlidingWindowStrategy,
+  ManualClock,
+} from '../dist/index.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -97,10 +100,23 @@ const strategies = [
       return createSlidingCounterStrategy({ limit: 100, windowMs: 60_000, clock });
     },
   },
+  {
+    name: 'sliding-window (limit=100, buckets=10)',
+    factory: () => {
+      const clock = new ManualClock(1_000_000_000_000);
+      return createSlidingWindowStrategy({ limit: 100, windowMs: 60_000, buckets: 10, clock });
+    },
+  },
+  {
+    name: 'sliding-window (limit=100, buckets=1)',
+    factory: () => {
+      const clock = new ManualClock(1_000_000_000_000);
+      return createSlidingWindowStrategy({ limit: 100, windowMs: 60_000, buckets: 1, clock });
+    },
+  },
 ];
 
 for (const { name, factory } of strategies) {
-  // Benchmark the apply() call
   const strategy = factory();
 
   // Warm up with a few different keys

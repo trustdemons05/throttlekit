@@ -1,10 +1,14 @@
 # ThrottleKit
 
-> A rate-limiting toolkit with **7 algorithms**, pluggable stores, clock-injected deterministic testing, multi-dimensional limits, adaptive concurrency, and **zero required dependencies**.
+![CI](https://github.com/trustdemons05/throttlekit/actions/workflows/ci.yml/badge.svg)
+![npm](https://img.shields.io/npm/v/throttlekit)
+![license](https://img.shields.io/npm/l/throttlekit)
+
+> A rate-limiting toolkit with **8 algorithms**, pluggable stores, clock-injected deterministic testing, multi-dimensional limits, adaptive concurrency, and **zero required dependencies**.
 
 ## Features
 
-- **7 Rate-Limiting Algorithms**: Token Bucket, Fixed Window, Sliding Window Log, Sliding Window Counter, **GCRA**, **Leaky Bucket**, **Adaptive Concurrency**
+- **8 Rate-Limiting Algorithms**: Token Bucket, Fixed Window, Sliding Window Log, Sliding Window Counter, Sliding Window (bucketed), **GCRA**, **Leaky Bucket**, **Adaptive Concurrency**
 - **4 Store Backends**: MemoryStore, RedisStore (WATCH/MULTI/EXEC + Lua EVALSHA), **Two-Tier Store** (L1 cache + L2 backend), applySync fast path
 - **Clock Injection**: ManualClock for deterministic, instant tests without `setTimeout`
 - **Framework Adapters**: Express, Fetch, **OpenTelemetry**
@@ -39,9 +43,12 @@ app.use('/api', expressAdapter(limiter));
 | Fixed Window | Rate Limiter | Low (2x burst) | O(1) | Simple/internal |
 | Sliding Window Log | Rate Limiter | Exact | O(n) | Audit/security |
 | Sliding Window Counter | Rate Limiter | ~98% | O(1) | General API |
+| Sliding Window (bucketed) | Rate Limiter | Approximate | O(buckets) | Time-series analytics |
 | **GCRA** | Rate Limiter | Exact | O(1) | Telecom-grade burst control |
 | **Leaky Bucket** | Shaper | Exact | O(1) | Traffic smoothing (delays, not rejects) |
 | **Adaptive Concurrency** | Guard | N/A | O(1) | Latency-aware load shedding |
+
+See [docs/algorithms.md](docs/algorithms.md) for detailed mathematical descriptions and examples.
 
 ## Subpath Exports
 
@@ -192,7 +199,7 @@ const instrumented = instrumentLimiter(limiter, meter);
 
 ### rateLimit(options)
 Creates a rate limiter.
-- `strategy`: `'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter' | 'gcra'`
+- `strategy`: `'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter' | 'sliding-window'`
 - `store`: Store implementation (defaults to MemoryStore)
 - `clock`: Clock implementation (defaults to SystemClock)
 - `ttlMs`: Auto-calculated if omitted
@@ -213,12 +220,12 @@ Fetch wrapper with identical security and header options.
 
 | Layer | Responsibility |
 |-------|----------------|
-| Strategies | Pure functions: `(state, now, cost) → {state, result}` |
+| Strategies | Pure functions: `(state, now, cost) -> {state, result}` |
 | Store | Atomic read-modify-write via `apply(key, ttl, transform)` |
 | Adapters | Thin wrappers: wire limiter.check() to framework |
 | Utils | Security, observability, standards compliance |
 
-Data flows DOWN (adapter → limiter → store → strategy). Results flow UP.
+Data flows DOWN (adapter -> limiter -> store -> strategy). Results flow UP.
 
 ## Test Suite
 
@@ -226,6 +233,14 @@ Data flows DOWN (adapter → limiter → store → strategy). Results flow UP.
 npm test          # 304 tests, ~3 seconds
 npm run coverage  # 84%+ coverage across 24 test files
 ```
+
+## Documentation
+
+- [Algorithms](docs/algorithms.md) — detailed algorithm descriptions and examples
+- [Architecture](docs/architecture.md) — design principles and internal structure
+- [Stores](docs/stores.md) — store selection guide
+- [Security](docs/security.md) — client IP, HMAC, and fail strategies
+- [Migration](docs/migration.md) — migrating from express-rate-limit and rate-limiter-flexible
 
 ## License
 

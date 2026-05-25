@@ -12,6 +12,7 @@ import { createTokenBucketStrategy } from '../strategies/token-bucket.js';
 import { createFixedWindowStrategy } from '../strategies/fixed-window.js';
 import { createSlidingLogStrategy } from '../strategies/sliding-window-log.js';
 import { createSlidingCounterStrategy } from '../strategies/sliding-window-counter.js';
+import { createSlidingWindowStrategy } from '../strategies/sliding-window.js';
 import {
   tokenBucketLua,
   fixedWindowLua,
@@ -263,6 +264,15 @@ export function rateLimit(options: RateLimitOptions): Limiter {
       strategy = createSlidingCounterStrategy({ limit, windowMs, clock });
       ttlMs ??= windowMs * 2;
       luaScript = slidingWindowCounterLua;
+      break;
+    }
+    case 'sliding-window': {
+      const limit = options.limit as number;
+      const windowMs = options.windowMs as number;
+      const buckets = (options.buckets as number | undefined) ?? 10;
+      strategy = createSlidingWindowStrategy({ limit, windowMs, buckets, clock });
+      ttlMs ??= windowMs * 2;
+      // No Lua fast path for bucketed sliding window (state layout differs)
       break;
     }
     default: {

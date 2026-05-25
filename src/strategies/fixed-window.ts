@@ -66,7 +66,7 @@ export function createFixedWindowStrategy(options: FixedWindowOptions): Strategy
           limit,
           remaining: limit,
           resetAt: now,
-          retryAfterMs: Infinity,
+          retryAfterMs: 2147483647,
         };
       }
 
