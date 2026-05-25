@@ -1,2 +1,5 @@
-// Placeholder for strategies index (Phase 2)
-export {};
+/**
+ * Strategies barrel export.
+ */
+export { tokenBucketConsume, createTokenBucketStrategy } from './token-bucket.js';
+export { createFixedWindowStrategy } from './fixed-window.js';
