@@ -1,0 +1,74 @@
+{
+  "name": "throttlekit",
+  "version": "0.1.0",
+  "description": "Pluggable, framework-agnostic rate-limiting toolkit with 4 algorithms, clock-injected testing, and zero required dependencies.",
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "main": "./dist/core/index.cjs",
+  "module": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "require": "./dist/core/index.cjs"
+    },
+    "./express": {
+      "types": "./dist/adapters/express.d.ts",
+      "import": "./dist/adapters/express.js",
+      "require": "./dist/adapters/express.cjs"
+    },
+    "./fetch": {
+      "types": "./dist/adapters/fetch.d.ts",
+      "import": "./dist/adapters/fetch.js",
+      "require": "./dist/adapters/fetch.cjs"
+    },
+    "./redis": {
+      "types": "./dist/stores/redis.d.ts",
+      "import": "./dist/stores/redis.js",
+      "require": "./dist/stores/redis.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'lint not configured'",
+    "benchmark": "node benchmark/algorithms.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "fast-check": "^4.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "rate-limit",
+    "rate-limiter",
+    "throttle",
+    "token-bucket",
+    "sliding-window",
+    "express",
+    "fetch",
+    "redis"
+  ]
+}
