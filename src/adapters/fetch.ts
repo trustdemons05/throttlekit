@@ -1,24 +1,63 @@
-import type { Limiter, RateLimitResult } from '../core/types.js';
+import type { Limiter, RateLimitResult, HeaderEmitOptions } from '../core/types.js';
+import { clientIp } from '../utils/client-ip.js';
+import { buildRateLimitHeaders } from '../utils/headers.js';
 
 export interface FetchAdapterOptions {
   keyExtractor?: (req: Request) => string;
   fetch?: typeof globalThis.fetch;
   failStrategy?: 'open' | 'closed';
   onLimited?: (req: Request, result: RateLimitResult) => void;
+
+  /**
+   * Trust proxy hops for client IP extraction.
+   * - `false` (default): use direct remote address only
+   * - `number`: trust N hops from the rightmost IP in `x-forwarded-for`
+   * - `string[]`: CIDR allowlist
+   */
+  trustProxy?: false | number | string[];
+
+  /**
+   * Number of bits to keep for IPv6 prefix aggregation (default: 64).
+   * Set to 128 to disable aggregation.
+   */
+  ipv6Prefix?: number;
+
+  /**
+   * Header emit mode options.
+   */
+  emit?: HeaderEmitOptions;
 }
 
 export function fetchAdapter(
   limiter: Limiter,
   options: FetchAdapterOptions = {}
 ): (request: Request) => Promise<Response> {
-  const keyExtractor = options.keyExtractor ?? ((req: Request) => req.headers.get('x-forwarded-for') ?? 'unknown');
+  const keyExtractor = options.keyExtractor ?? ((req: Request) => {
+    // Build headers object from Request for clientIp
+    const headers: Record<string, string | string[] | undefined> = {};
+    req.headers.forEach((value, key) => {
+      headers[key.toLowerCase()] = value;
+    });
+    // For fetch, we don't have a direct remote address, use x-real-ip or x-forwarded-for
+    return clientIp(headers, {
+      trustProxy: options.trustProxy,
+      ipv6Prefix: options.ipv6Prefix,
+    });
+  });
   const fetchFn = options.fetch ?? globalThis.fetch;
   const failStrategy = options.failStrategy ?? 'open';
+  const emit = options.emit;
 
   return async (request: Request) => {
     try {
       const key = keyExtractor(request);
       const result = await limiter.check(key, 1);
+
+      // Build rate-limit headers
+      const rateLimitHeaders = buildRateLimitHeaders(result, {
+        emit,
+        now: Date.now(),
+      });
 
       if (!result.allowed) {
         options.onLimited?.(request, result);
@@ -27,10 +66,7 @@ export function fetchAdapter(
           {
             status: 429,
             headers: {
-              'RateLimit-Limit': result.limit.toString(),
-              'RateLimit-Remaining': '0',
-              'RateLimit-Reset': Math.ceil(result.resetAt / 1000).toString(),
-              'Retry-After': Math.ceil(result.retryAfterMs / 1000).toString(),
+              ...rateLimitHeaders,
               'Content-Type': 'application/json',
             },
           }
@@ -42,9 +78,9 @@ export function fetchAdapter(
 
       // Inject rate-limit headers into response
       const newHeaders = new Headers(response.headers);
-      newHeaders.set('RateLimit-Limit', result.limit.toString());
-      newHeaders.set('RateLimit-Remaining', result.remaining.toString());
-      newHeaders.set('RateLimit-Reset', Math.ceil(result.resetAt / 1000).toString());
+      for (const [name, value] of Object.entries(rateLimitHeaders)) {
+        newHeaders.set(name, value);
+      }
 
       return new Response(response.body, {
         status: response.status,

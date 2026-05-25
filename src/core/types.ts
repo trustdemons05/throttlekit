@@ -93,3 +93,72 @@ export interface RateLimitOptions {
   // Strategy-specific options are added by the factory
   [key: string]: unknown;
 }
+
+// --- Shaper (Leaky Bucket) ---
+
+export interface ShaperResult {
+  accepted: boolean;
+  delayMs: number;
+  retryAfterMs: number;
+  queueDepth: number;
+}
+
+export interface Shaper {
+  reserve(key: string, cost?: number): Promise<ShaperResult>;
+  reserveSync(key: string, cost?: number): ShaperResult;
+  schedule(key: string, cost?: number): Promise<void>;
+  reset(key: string): Promise<void>;
+}
+
+export class QueueFullError extends Error {
+  retryAfterMs: number;
+
+  constructor(message: string, retryAfterMs: number) {
+    super(message);
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+// --- Concurrency Guard (Adaptive Concurrency) ---
+
+export interface ConcurrencyLease {
+  ok: boolean;
+  inflight: number;
+  limit: number;
+  release(opts?: { dropped?: boolean }): void;
+}
+
+export interface ConcurrencyGuard {
+  acquire(): ConcurrencyLease;
+  readonly limit: number;
+  readonly inflight: number;
+  stats(): { p50Rtt: number; p99Rtt: number; noloadRtt: number };
+}
+
+// --- Multi-dimensional ---
+
+export type DimensionMap<Ctx> = Record<
+  string,
+  { key: (ctx: Ctx) => string; strategy: Limiter; cost?: (ctx: Ctx) => number }
+>;
+
+export interface MultiLimiter<Ctx> {
+  check(ctx: Ctx): Promise<RateLimitResult>;
+}
+
+// --- Two-tier lease config ---
+
+export type TwoTierMode = 'strict' | 'cached-deny' | 'leased';
+
+export interface LeaseConfig {
+  batch: number;
+  lowWater?: number;
+}
+
+// --- Header emit options ---
+
+export interface HeaderEmitOptions {
+  draft?: boolean;
+  structured?: boolean;
+  legacy?: boolean;
+}

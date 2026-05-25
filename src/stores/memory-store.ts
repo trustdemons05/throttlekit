@@ -1,4 +1,4 @@
-import type { Clock, Store } from '../core/types.js';
+import type { Clock, RateLimitResult, Store } from '../core/types.js';
 
 interface MemoryEntry {
   value: unknown;
@@ -17,6 +17,8 @@ export interface MemoryStoreOptions {
  * Zero required dependencies.
  */
 export class MemoryStore implements Store {
+  readonly supportsSync = true as const;
+
   private store = new Map<string, MemoryEntry>();
   private locks = new Map<string, Promise<void>>();
   private clock: Clock;
@@ -78,6 +80,28 @@ export class MemoryStore implements Store {
     ); // Swallow rejection so chain continues
     this.locks.set(key, next);
     return prev;
+  }
+
+  /**
+   * Synchronous apply for Float64Array-based strategies.
+   * No Promise, no mutex — direct synchronous read-modify-write.
+   */
+  applySync<S extends Float64Array>(
+    key: string,
+    ttlMs: number,
+    transform: (state: S | null) => { state: S; result: RateLimitResult }
+  ): RateLimitResult {
+    const entry = this.store.get(key);
+    const currentState =
+      entry && entry.expiresAt > this.clock.now()
+        ? (entry.value as S)
+        : null;
+    const { state: newState, result } = transform(currentState);
+    this.store.set(key, {
+      value: newState,
+      expiresAt: this.clock.now() + ttlMs,
+    });
+    return result;
   }
 
   private releaseLock(_key: string): void {
