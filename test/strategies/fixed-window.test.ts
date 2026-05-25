@@ -13,14 +13,14 @@ import type { Strategy } from '../../src/strategies/fixed-window.js';
 runStrategyTests(
   'FixedWindow',
   (limit: number, windowMs: number, clock: ManualClock) =>
-    createFixedWindowStrategy(limit, windowMs, clock),
+    createFixedWindowStrategy({ limit, windowMs, clock }),
   () => {
     // -----------------------------------------------------------------------
     // 2× boundary burst (known fixed-window property)
     // -----------------------------------------------------------------------
     it('permits 2× burst at window boundary (known fixed-window property)', () => {
       const clock = new ManualClock(0); // Start at epoch boundary
-      const strategy = createFixedWindowStrategy(5, 1000, clock) as Strategy;
+      const strategy = createFixedWindowStrategy({ limit: 5, windowMs: 1000, clock }) as Strategy;
 
       // Exhaust current window
       for (let i = 0; i < 5; i++) {
@@ -58,7 +58,7 @@ runStrategyTests(
     // -----------------------------------------------------------------------
     it('uses aligned calendar windows, not sliding windows', () => {
       const clock = new ManualClock(0); // Start at epoch 0
-      const strategy = createFixedWindowStrategy(5, 1000, clock) as Strategy;
+      const strategy = createFixedWindowStrategy({ limit: 5, windowMs: 1000, clock }) as Strategy;
 
       // First request at t=0 → window [0, 1000)
       const r1 = strategy.apply('key', 1);
@@ -90,7 +90,7 @@ runStrategyTests(
     // -----------------------------------------------------------------------
     it('cost=0 does not advance the window count', () => {
       const clock = new ManualClock(0);
-      const strategy = createFixedWindowStrategy(5, 1000, clock) as Strategy;
+      const strategy = createFixedWindowStrategy({ limit: 5, windowMs: 1000, clock }) as Strategy;
 
       // cost=0 should not consume
       const r0 = strategy.apply('key', 0);

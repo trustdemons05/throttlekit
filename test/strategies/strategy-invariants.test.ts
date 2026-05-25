@@ -37,7 +37,7 @@ interface Strategy {
 function createStrategies(clock: ManualClock): Strategy[] {
   return [
     createTokenBucketStrategy({ capacity: 100, refillRate: 50, clock }),
-    createFixedWindowStrategy(100, 60_000, clock),
+    createFixedWindowStrategy({ limit: 100, windowMs: 60_000, clock }),
     createSlidingLogStrategy({ limit: 100, windowMs: 60_000, clock }),
     createSlidingCounterStrategy({ limit: 100, windowMs: 60_000, clock }),
   ];
@@ -70,7 +70,7 @@ describe('Invariant: remaining ∈ [0, limit]', () => {
               testStrategy = createTokenBucketStrategy({ capacity: limit, refillRate: 999_999, clock });
               break;
             case 'FixedWindow':
-              testStrategy = createFixedWindowStrategy(limit, 60_000, clock);
+              testStrategy = createFixedWindowStrategy({ limit, windowMs: 60_000, clock });
               break;
             case 'SlidingWindowLog':
               testStrategy = createSlidingLogStrategy({ limit, windowMs: 60_000, clock });
@@ -184,7 +184,7 @@ describe('Invariant: cost=0 does not consume capacity', () => {
               s = createTokenBucketStrategy({ capacity: limit, refillRate: 999_999, clock });
               break;
             case 'FixedWindow':
-              s = createFixedWindowStrategy(limit, 60_000, clock);
+              s = createFixedWindowStrategy({ limit, windowMs: 60_000, clock });
               break;
             case 'SlidingWindowLog':
               s = createSlidingLogStrategy({ limit, windowMs: 60_000, clock });

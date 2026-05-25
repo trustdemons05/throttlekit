@@ -26,7 +26,7 @@ describe('strategy-level concurrency', () => {
     ['token-bucket', (l: number, c: ManualClock) =>
       createTokenBucketStrategy({ capacity: l, refillRate: 999_999, clock: c })],
     ['fixed-window', (l: number, c: ManualClock) =>
-      createFixedWindowStrategy(l, 60_000, c)],
+      createFixedWindowStrategy({ limit: l, windowMs: 60_000, clock: c })],
     ['sliding-window-log', (l: number, c: ManualClock) =>
       createSlidingLogStrategy({ limit: l, windowMs: 60_000, clock: c })],
     ['sliding-window-counter', (l: number, c: ManualClock) =>

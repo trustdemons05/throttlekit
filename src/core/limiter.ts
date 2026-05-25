@@ -170,7 +170,7 @@ export function rateLimit(options: RateLimitOptions): Limiter {
     case 'fixed-window': {
       const limit = options.limit as number;
       const windowMs = options.windowMs as number;
-      strategy = createFixedWindowStrategy(limit, windowMs, clock);
+      strategy = createFixedWindowStrategy({ limit, windowMs, clock });
       ttlMs ??= windowMs;
       break;
     }

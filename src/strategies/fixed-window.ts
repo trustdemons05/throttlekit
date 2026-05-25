@@ -36,18 +36,21 @@ export interface Strategy {
   reset?(key: string): void;
 }
 
+export interface FixedWindowOptions {
+  limit: number;
+  windowMs: number;
+  clock: Clock;
+}
+
 /**
  * Create a Fixed Window strategy instance.
  *
- * @param limit    - Maximum requests allowed per window
- * @param windowMs - Window duration in milliseconds
- * @param clock    - Clock implementation (injected for deterministic testing)
+ * @param options.limit    - Maximum requests allowed per window
+ * @param options.windowMs - Window duration in milliseconds
+ * @param options.clock    - Clock implementation (injected for deterministic testing)
  */
-export function createFixedWindowStrategy(
-  limit: number,
-  windowMs: number,
-  clock: Clock,
-): Strategy {
+export function createFixedWindowStrategy(options: FixedWindowOptions): Strategy {
+  const { limit, windowMs, clock } = options;
   const stateMap = new Map<string, FixedWindowState>();
 
   return {
