@@ -1,14 +1,15 @@
 # ThrottleKit
 
-> A rate-limiting toolkit with 4 algorithms, pluggable stores, clock-injected deterministic testing, and zero required dependencies.
+> A rate-limiting toolkit with **7 algorithms**, pluggable stores, clock-injected deterministic testing, multi-dimensional limits, adaptive concurrency, and **zero required dependencies**.
 
 ## Features
 
-- **4 Algorithms**: Token Bucket, Fixed Window, Sliding Window Log, Sliding Window Counter
-- **Pluggable Stores**: MemoryStore (zero deps), RedisStore (optional peer dep)
-- **Clock Injection**: ManualClock for deterministic tests without setTimeout
-- **Framework Adapters**: Express, Fetch (Web-standard)
-- **Multi-Limit Composition**: `combine()` for AND logic (e.g., 10/sec AND 1000/hour)
+- **7 Rate-Limiting Algorithms**: Token Bucket, Fixed Window, Sliding Window Log, Sliding Window Counter, **GCRA**, **Leaky Bucket**, **Adaptive Concurrency**
+- **4 Store Backends**: MemoryStore, RedisStore (WATCH/MULTI/EXEC + Lua EVALSHA), **Two-Tier Store** (L1 cache + L2 backend), applySync fast path
+- **Clock Injection**: ManualClock for deterministic, instant tests without `setTimeout`
+- **Framework Adapters**: Express, Fetch, **OpenTelemetry**
+- **Multi-Limit Composition**: `combine()` for AND logic, `multiRateLimit()` for per-dimension rules
+- **Security & Observability**: Client IP resolution (trustProxy, IPv6), HMAC-SHA256 key hashing, standards-compliant headers (draft/structured/legacy)
 - **Zero Required Dependencies**: Core works without npm install overhead
 
 ## Quickstart
@@ -32,21 +33,27 @@ app.use('/api', expressAdapter(limiter));
 
 ## Algorithm Selection
 
-| Algorithm | Accuracy | Memory | Best For |
-|-----------|----------|--------|----------|
-| Token Bucket | Exact | O(1) | Bursty traffic |
-| Fixed Window | Low (2x burst) | O(1) | Simple/internal |
-| Sliding Window Log | Exact | O(n) | Audit/security |
-| Sliding Window Counter | ~98% | O(1) | General API |
+| Algorithm | Type | Accuracy | Memory | Best For |
+|-----------|------|----------|--------|----------|
+| Token Bucket | Rate Limiter | Exact | O(1) | Bursty traffic |
+| Fixed Window | Rate Limiter | Low (2x burst) | O(1) | Simple/internal |
+| Sliding Window Log | Rate Limiter | Exact | O(n) | Audit/security |
+| Sliding Window Counter | Rate Limiter | ~98% | O(1) | General API |
+| **GCRA** | Rate Limiter | Exact | O(1) | Telecom-grade burst control |
+| **Leaky Bucket** | Shaper | Exact | O(1) | Traffic smoothing (delays, not rejects) |
+| **Adaptive Concurrency** | Guard | N/A | O(1) | Latency-aware load shedding |
 
 ## Subpath Exports
 
 | Import Path | Contents |
 |-------------|----------|
-| `throttlekit` | Core: rateLimit, combine, ManualClock |
+| `throttlekit` | Core: rateLimit, combine, ManualClock, multiRateLimit |
 | `throttlekit/express` | Express middleware adapter |
 | `throttlekit/fetch` | Web-standard fetch wrapper |
-| `throttlekit/redis` | RedisStore (requires ioredis) |
+| `throttlekit/redis` | RedisStore with Lua EVALSHA fast path |
+| `throttlekit/otel` | **OpenTelemetry instrumentation** |
+| `throttlekit/utils` | **Client IP, HMAC keys, standards-compliant headers** |
+| `throttlekit/testkit` | **Store conformance suite + mock Redis** |
 
 ## Deterministic Testing with ManualClock
 
@@ -73,11 +80,119 @@ const perHour = rateLimit({ strategy: 'fixed-window', limit: 1000, windowMs: 3_6
 app.use('/api', expressAdapter(combine(perSecond, perHour)));
 ```
 
+## Multi-Dimensional Rate Limiting
+
+Apply different limits to different dimensions (e.g., per-user + per-IP + per-route) in a single check:
+
+```typescript
+import { multiRateLimit, all } from 'throttlekit';
+
+const limiter = multiRateLimit({
+  store: new MemoryStore(),
+  strategy: all({
+    user: {
+      key: (ctx) => ctx.userId,
+      strategy: rateLimit({ strategy: 'token-bucket', capacity: 100, refillRate: 10 }),
+    },
+    ip: {
+      key: (ctx) => ctx.ip,
+      strategy: rateLimit({ strategy: 'fixed-window', limit: 1000, windowMs: 60_000 }),
+    },
+  }),
+});
+
+const result = await limiter.check({ userId: 'u123', ip: '1.2.3.4' });
+```
+
+## Adaptive Concurrency
+
+Automatically adjusts the in-flight request ceiling based on observed latency:
+
+```typescript
+import { createAdaptiveConcurrency } from 'throttlekit';
+
+const guard = createAdaptiveConcurrency({
+  minLimit: 4,
+  maxLimit: 512,
+  algorithm: 'gradient2',
+});
+
+const lease = guard.acquire();
+if (lease.ok) {
+  try {
+    await handleRequest();
+    lease.release();
+  } catch {
+    lease.release({ dropped: true });
+  }
+} else {
+  return 503; // Shed load
+}
+```
+
+## Leaky Bucket (Traffic Shaper)
+
+Smooth traffic by delaying rather than rejecting:
+
+```typescript
+import { createLeakyBucket } from 'throttlekit';
+
+const shaper = createLeakyBucket({
+  ratePerSec: 5,
+  maxQueueMs: 10_000,
+});
+
+// schedule() resolves after the computed delay
+await shaper.schedule('key', 1); // waits if needed, throws QueueFullError if maxQueueMs exceeded
+```
+
+## Two-Tier Store
+
+Reduce Redis round-trips with local caching:
+
+```typescript
+import { createTwoTierStore } from 'throttlekit';
+
+const store = createTwoTierStore({
+  strategy: 'leased',
+  l2: redisStore,
+  mode: 'leased',
+  lease: { batch: 100, lowWater: 20 },
+});
+```
+
+## Security-First Adapters
+
+```typescript
+import { expressAdapter } from 'throttlekit/express';
+
+app.use('/api', expressAdapter(limiter, {
+  trustProxy: ['10.0.0.0/8'],     // Only trust X-Forwarded-From from internal IPs
+  ipv6Prefix: 64,                  // Aggregate IPv6 to /64 prefix
+  emit: { draft: true, legacy: true },
+  cost: (req) => req.method === 'POST' ? 5 : 1,
+}));
+```
+
+## OpenTelemetry Integration
+
+```typescript
+import { instrumentLimiter } from 'throttlekit/otel';
+import { metrics } from '@opentelemetry/api';
+
+const meter = metrics.getMeter('my-app');
+const instrumented = instrumentLimiter(limiter, meter);
+
+// Metrics recorded automatically:
+// - throttlekit.checks (counter)
+// - throttlekit.store.latency (histogram)
+```
+
 ## API Reference
 
 ### rateLimit(options)
 Creates a rate limiter.
-- `strategy`: `'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter'`
+- `strategy`: `'token-bucket' | 'fixed-window' | 'sliding-window-log' | 'sliding-window-counter' | 'gcra'`
 - `store`: Store implementation (defaults to MemoryStore)
 - `clock`: Clock implementation (defaults to SystemClock)
 - `ttlMs`: Auto-calculated if omitted
@@ -85,11 +200,14 @@ Creates a rate limiter.
 ### combine(...limiters)
 Combines multiple limiters. Short-circuits on first block.
 
+### multiRateLimit({ store, strategy })
+Multi-dimensional limiting. Use `all()` for AND logic, `any()` for OR logic.
+
 ### expressAdapter(limiter, options)
-Express middleware. Sets RateLimit-* headers, Retry-After on 429.
+Express middleware with trustProxy, ipv6Prefix, emit, and cost options.
 
 ### fetchAdapter(limiter, options)
-Fetch wrapper. Returns 429 Response when blocked, injects headers on pass.
+Fetch wrapper with identical security and header options.
 
 ## Design Philosophy
 
@@ -98,8 +216,16 @@ Fetch wrapper. Returns 429 Response when blocked, injects headers on pass.
 | Strategies | Pure functions: `(state, now, cost) → {state, result}` |
 | Store | Atomic read-modify-write via `apply(key, ttl, transform)` |
 | Adapters | Thin wrappers: wire limiter.check() to framework |
+| Utils | Security, observability, standards compliance |
 
 Data flows DOWN (adapter → limiter → store → strategy). Results flow UP.
+
+## Test Suite
+
+```bash
+npm test          # 304 tests, ~3 seconds
+npm run coverage  # 84%+ coverage across 24 test files
+```
 
 ## License
 
