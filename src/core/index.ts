@@ -9,3 +9,5 @@ export type {
 } from './types.js';
 
 export { SystemClock, ManualClock } from './clock.js';
+export { LimiterImpl, rateLimit } from './limiter.js';
+export { combine } from './combine.js';

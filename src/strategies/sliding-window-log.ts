@@ -140,6 +140,7 @@ export interface Strategy {
   peek?(key: string): RateLimitResult | null;
   exportState?(key: string): unknown;
   importState?(key: string, state: unknown): void;
+  reset?(key: string): void;
 }
 
 /**
@@ -203,6 +204,10 @@ export function createSlidingLogStrategy(options: SlidingLogOptions): Strategy {
           setState(key, [...state]);
         }
       }
+    },
+
+    reset(key: string): void {
+      states.delete(key);
     },
   };
 

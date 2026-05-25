@@ -33,6 +33,7 @@ export interface Strategy {
   peek?(key: string): RateLimitResult | null;
   exportState?(key: string): unknown;
   importState?(key: string, state: unknown): void;
+  reset?(key: string): void;
 }
 
 /**
@@ -138,6 +139,10 @@ export function createFixedWindowStrategy(
     importState(key: string, raw: unknown): void {
       if (raw === null || raw === undefined) return;
       stateMap.set(key, raw as FixedWindowState);
+    },
+
+    reset(key: string): void {
+      stateMap.delete(key);
     },
   };
 }

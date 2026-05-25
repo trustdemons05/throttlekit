@@ -152,6 +152,7 @@ export interface Strategy {
   peek?(key: string): RateLimitResult | null;
   exportState?(key: string): unknown;
   importState?(key: string, state: unknown): void;
+  reset?(key: string): void;
 }
 
 /**
@@ -234,6 +235,10 @@ export function createSlidingCounterStrategy(options: SlidingCounterOptions): St
           });
         }
       }
+    },
+
+    reset(key: string): void {
+      states.delete(key);
     },
   };
 

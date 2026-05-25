@@ -123,6 +123,7 @@ export interface Strategy {
   peek?(key: string): RateLimitResult | null;
   exportState?(key: string): unknown;
   importState?(key: string, state: unknown): void;
+  reset?(key: string): void;
 }
 
 /**
@@ -200,6 +201,10 @@ export function createTokenBucketStrategy(options: {
       if (raw === null || raw === undefined) return;
       const arr = raw as number[];
       stateMap.set(key, new Float64Array(arr));
+    },
+
+    reset(key: string): void {
+      stateMap.delete(key);
     },
   };
 }
