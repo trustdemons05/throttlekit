@@ -186,7 +186,7 @@ export function multiRateLimit<Ctx>(
       name,
       key: dim.key,
       limiter: dim.strategy,
-      cost: dim.cost,
+      ...(dim.cost !== undefined && { cost: dim.cost }),
     }),
   );
 

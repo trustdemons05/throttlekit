@@ -5,6 +5,7 @@
  * for 2× boundary burst behavior (known fixed-window property).
  */
 
+import { it, expect } from 'vitest';
 import { runStrategyTests } from '../helpers/strategy-test-runner.js';
 import { createFixedWindowStrategy } from '../../src/strategies/fixed-window.js';
 import { ManualClock } from '../helpers/manual-clock.js';

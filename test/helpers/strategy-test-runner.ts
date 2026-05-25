@@ -17,6 +17,7 @@
  *  - Supports state serialization (if implemented)
  *  - Handles concurrent requests at the same clock tick
  */
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ManualClock } from './manual-clock.js';
 import { simulateConcurrentSync } from './concurrent.js';
 

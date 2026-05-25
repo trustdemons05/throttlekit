@@ -83,8 +83,8 @@ export function expressAdapter(
     }
 
     return clientIp(headers, {
-      trustProxy: options.trustProxy,
-      ipv6Prefix: options.ipv6Prefix,
+      ...(options.trustProxy !== undefined && { trustProxy: options.trustProxy }),
+      ...(options.ipv6Prefix !== undefined && { ipv6Prefix: options.ipv6Prefix }),
     });
   });
   const failStrategy = options.failStrategy ?? 'open';
@@ -99,7 +99,7 @@ export function expressAdapter(
 
       // Build and set headers using buildRateLimitHeaders
       const headers = buildRateLimitHeaders(result, {
-        emit,
+        ...(emit !== undefined && { emit }),
         now: Date.now(),
       });
       for (const [name, value] of Object.entries(headers)) {

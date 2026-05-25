@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { expect, vi } from 'vitest';
 
 expect.extend({
   toBeWithinOneSecondOf(received: number, expected: number) {

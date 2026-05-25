@@ -24,8 +24,8 @@ import type { Limiter, RateLimitResult } from '../src/core/types.js';
 /**
  * Create a spy limiter that records each check call.
  */
-function createSpyLimiter(_name: string): Limiter & { calls: Array<{ key: string; cost?: number }> } {
-  const calls: Array<{ key: string; cost?: number }> = [];
+function createSpyLimiter(_name: string): Limiter & { calls: Array<{ key: string; cost: number | undefined }> } {
+  const calls: Array<{ key: string; cost: number | undefined }> = [];
   return {
     calls,
     async check(key: string, cost?: number): Promise<RateLimitResult> {
@@ -260,10 +260,10 @@ describe('combine()', () => {
 
     await combined.check('cost-key', 3);
 
-    expect(spyA.calls[0].key).toBe('cost-key');
-    expect(spyA.calls[0].cost).toBe(3);
-    expect(spyB.calls[0].key).toBe('cost-key');
-    expect(spyB.calls[0].cost).toBe(3);
+    expect(spyA.calls[0]!.key).toBe('cost-key');
+    expect(spyA.calls[0]!.cost).toBe(3);
+    expect(spyB.calls[0]!.key).toBe('cost-key');
+    expect(spyB.calls[0]!.cost).toBe(3);
   });
 
   it('calls limiters in order', async () => {

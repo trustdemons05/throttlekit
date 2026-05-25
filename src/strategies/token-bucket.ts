@@ -172,8 +172,11 @@ export function createTokenBucketStrategy(options: {
       if (!state) return null;
 
       const now = clock.now();
-      const elapsed = (now - state[1]) / 1000;
-      const tokens = Math.min(capacity, state[0] + elapsed * refillRate);
+      // Float64Array elements always return numbers (defaults to 0) — guaranteed safe
+      const lastRefill = state[1]!;
+      const currentTokens = state[0]!;
+      const elapsed = (now - lastRefill) / 1000;
+      const tokens = Math.min(capacity, currentTokens + elapsed * refillRate);
 
       return {
         allowed: tokens > 0,

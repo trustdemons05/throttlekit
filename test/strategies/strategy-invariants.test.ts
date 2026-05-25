@@ -102,7 +102,7 @@ describe('Invariant: retryAfterMs === 0 ⇔ allowed === true', () => {
       fc.property(fc.integer({ min: 0, max: 100 }), (cost) => {
         const clock = new ManualClock(1_000_000_000_000);
         const strategies = createStrategies(clock);
-        const s = strategies[idx];
+        const s = strategies[idx]!;
         const result = s.apply('key', cost);
         if (result.allowed) {
           expect(result.retryAfterMs).toBe(0);
@@ -126,7 +126,7 @@ describe('Invariant: resetAt > now when blocked', () => {
       fc.property(fc.integer({ min: 1, max: 50 }), (exhaustCalls) => {
         const clock = new ManualClock(1_000_000_000_000);
         const strategies = createStrategies(clock);
-        const s = strategies[idx];
+        const s = strategies[idx]!;
         const now = clock.now();
 
         // Exhaust the limiter
@@ -155,7 +155,7 @@ describe('Invariant: allowed is a strict boolean', () => {
       fc.property(fc.integer({ min: 0, max: 100 }), (cost) => {
         const clock = new ManualClock(1_000_000_000_000);
         const strategies = createStrategies(clock);
-        const s = strategies[idx];
+        const s = strategies[idx]!;
         const result = s.apply('key', cost);
         // Strict boolean: must be exactly true or false, not a truthy/falsy value
         expect(typeof result.allowed).toBe('boolean');
@@ -240,7 +240,7 @@ describe('Invariant: keys are isolated', () => {
       fc.property(fc.integer({ min: 1, max: 20 }), (callsOnA) => {
         const clock = new ManualClock(1_000_000_000_000);
         const strategies = createStrategies(clock);
-        const s = strategies[idx];
+        const s = strategies[idx]!;
 
         // Exhaust key A
         for (let i = 0; i < callsOnA; i++) {

@@ -89,7 +89,9 @@ export function slidingLogConsume(
   }
 
   // ── Rejected ──
-  const oldest = pruned[0];
+  // pruned.length > 0 is guaranteed here because pruned.length + cost > max
+  // and cost >= 1 (handled at line 48), so pruned must have at least 1 element.
+  const oldest = pruned[0]!;
   const retryAfterMs = Math.max(0, oldest + windowSizeMs - now);
   return {
     state: pruned,
@@ -116,7 +118,8 @@ function binarySearchFirstGE(arr: number[], target: number): number {
   let hi = arr.length;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
-    if (arr[mid] < target) {
+    // mid is in [0, arr.length) because lo < hi guarantees mid < arr.length
+    if (arr[mid]! < target) {
       lo = mid + 1;
     } else {
       hi = mid;

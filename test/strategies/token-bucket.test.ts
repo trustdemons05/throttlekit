@@ -6,6 +6,7 @@
  * token handling.
  */
 
+import { it, expect } from 'vitest';
 import { runStrategyTests } from '../helpers/strategy-test-runner.js';
 import { createTokenBucketStrategy } from '../../src/strategies/token-bucket.js';
 import { ManualClock } from '../helpers/manual-clock.js';

@@ -473,10 +473,10 @@ class RedisStore implements Store {
 function parseLuaResult(result: number[]): RateLimitResult {
   return {
     allowed: result[0] === 1,
-    limit: result[1],
-    remaining: result[2],
-    resetAt: result[3],
-    retryAfterMs: result[4],
+    limit: result[1] ?? 0,
+    remaining: result[2] ?? 0,
+    resetAt: result[3] ?? 0,
+    retryAfterMs: result[4] ?? 0,
   };
 }
 

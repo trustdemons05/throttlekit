@@ -200,7 +200,8 @@ export function createGcraStrategy(options: GcraOptions): Strategy {
       const now = clock.now();
       const emissionInterval = periodMs / limit;
       const burstOffset = burst * emissionInterval;
-      const tat = state[0];
+      // Float64Array[0] always returns a number (defaults to 0) — guaranteed safe
+      const tat = state[0] ?? 0;
 
       // Show the current remaining capacity without mutating state
       const headroom = burstOffset - (tat - now);

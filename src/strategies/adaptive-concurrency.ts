@@ -52,10 +52,11 @@ class RttWindow {
     if (this.count === 0) return 0;
     const sorted = this.getSortedSamples();
     const mid = Math.floor(sorted.length / 2);
+    // sorted.length > 0 here (count > 0), so mid is always a valid index
     if (sorted.length % 2 === 0) {
-      return (sorted[mid - 1] + sorted[mid]) / 2;
+      return (sorted[mid - 1]! + sorted[mid]!) / 2;
     }
-    return sorted[mid];
+    return sorted[mid]!;
   }
 
   /** Compute p99 from the window */
@@ -63,7 +64,8 @@ class RttWindow {
     if (this.count === 0) return 0;
     const sorted = this.getSortedSamples();
     const idx = Math.ceil(sorted.length * 0.99) - 1;
-    return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
+    // Clamped index is always valid when sorted.length > 0 (count > 0)
+    return sorted[Math.max(0, Math.min(idx, sorted.length - 1))]!;
   }
 
   /** The minimum observed RTT (no-load latency estimate) */
@@ -79,7 +81,8 @@ class RttWindow {
   private getSortedSamples(): number[] {
     const samples: number[] = [];
     for (let i = 0; i < this.count; i++) {
-      samples.push(this.buffer[i]);
+      // Float64Array elements always return numbers — guaranteed safe
+      samples.push(this.buffer[i]!);
     }
     return samples.sort((a, b) => a - b);
   }

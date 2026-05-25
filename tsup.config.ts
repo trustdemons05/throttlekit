@@ -2,19 +2,18 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig({
   entry: {
-    'core/index': 'src/core/index.ts',
+    'index': 'src/index.ts',
     'adapters/express': 'src/adapters/express.ts',
     'adapters/fetch': 'src/adapters/fetch.ts',
-    'adapters/otel': 'src/adapters/otel.ts',
-    'testkit/index': 'src/testkit/index.ts',
-    'utils/index': 'src/utils/index.ts',
     'stores/redis': 'src/stores/redis.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
-  clean: true,
   splitting: false,
   sourcemap: true,
-  minify: false,
-  target: 'es2022',
+  clean: true,
+  target: 'node18',
+  outDir: 'dist',
+  treeshake: true,
+  external: ['ioredis', 'express', '@opentelemetry/api'],
 });

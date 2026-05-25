@@ -1,49 +1,14 @@
 {
   "name": "throttlekit",
   "version": "0.1.0",
-  "description": "Pluggable, framework-agnostic rate-limiting toolkit with 4 algorithms, clock-injected testing, and zero required dependencies.",
+  "description": "Pluggable, framework-agnostic rate-limiting toolkit with 7 algorithms, clock-injected deterministic testing, and zero required dependencies.",
   "license": "MIT",
-  "author": "",
   "type": "module",
-  "main": "./dist/core/index.cjs",
-  "module": "./dist/core/index.js",
-  "types": "./dist/core/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core/index.js",
-      "require": "./dist/core/index.cjs"
-    },
-    "./express": {
-      "types": "./dist/adapters/express.d.ts",
-      "import": "./dist/adapters/express.js",
-      "require": "./dist/adapters/express.cjs"
-    },
-    "./fetch": {
-      "types": "./dist/adapters/fetch.d.ts",
-      "import": "./dist/adapters/fetch.js",
-      "require": "./dist/adapters/fetch.cjs"
-    },
-    "./redis": {
-      "types": "./dist/stores/redis.d.ts",
-      "import": "./dist/stores/redis.js",
-      "require": "./dist/stores/redis.cjs"
-    },
-    "./otel": {
-      "types": "./dist/adapters/otel.d.ts",
-      "import": "./dist/adapters/otel.js",
-      "require": "./dist/adapters/otel.cjs"
-    },
-    "./testkit": {
-      "types": "./dist/testkit/index.d.ts",
-      "import": "./dist/testkit/index.js",
-      "require": "./dist/testkit/index.cjs"
-    },
-    "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.js",
-      "require": "./dist/utils/index.cjs"
-    }
+    ".":          { "import": "./dist/index.js",            "require": "./dist/index.cjs" },
+    "./express":  { "import": "./dist/adapters/express.js", "require": "./dist/adapters/express.cjs" },
+    "./fetch":    { "import": "./dist/adapters/fetch.js",   "require": "./dist/adapters/fetch.cjs" },
+    "./redis":    { "import": "./dist/stores/redis.js",     "require": "./dist/stores/redis.cjs" }
   },
   "files": [
     "dist",
@@ -54,16 +19,19 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'lint not configured'",
-    "benchmark": "node benchmark/algorithms.js"
+    "bench": "node benchmark/algorithms.js",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^3.0.0",
-    "fast-check": "^4.0.0",
+    "fast-check": "^3.19.0",
+    "rimraf": "^5.0.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.6.0",
+    "typescript": "^5.4.0",
     "vitest": "^3.0.0"
   },
   "peerDependencies": {
@@ -76,15 +44,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "keywords": [
-    "rate-limit",
-    "rate-limiter",
-    "throttle",
-    "token-bucket",
-    "sliding-window",
-    "express",
-    "fetch",
-    "redis"
-  ]
+  }
 }

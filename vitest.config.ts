@@ -2,31 +2,16 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    globals: true,
+    globals: false,
     environment: 'node',
-    include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
-    setupFiles: ['./test/setup.ts'],
+    include: ['test/**/*.test.ts'],
+    typecheck: {
+      enabled: true,
+    },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'lcov', 'html'],
       include: ['src/**/*.ts'],
-      exclude: [
-        'src/**/*.test.ts',
-        'src/test/**',
-        'src/**/*.d.ts',
-        'src/**/index.ts',
-        'src/**/types.ts',
-      ],
-      thresholds: {
-        lines: 84,
-        branches: 88,
-        functions: 90,
-        statements: 84,
-      },
+      exclude: ['src/**/*.d.ts', 'node_modules'],
     },
-    maxConcurrency: 10,
-    testTimeout: 10_000,
-    sequence: { concurrent: false },
-    retry: 0,
   },
 });

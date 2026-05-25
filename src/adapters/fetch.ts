@@ -40,8 +40,8 @@ export function fetchAdapter(
     });
     // For fetch, we don't have a direct remote address, use x-real-ip or x-forwarded-for
     return clientIp(headers, {
-      trustProxy: options.trustProxy,
-      ipv6Prefix: options.ipv6Prefix,
+      ...(options.trustProxy !== undefined && { trustProxy: options.trustProxy }),
+      ...(options.ipv6Prefix !== undefined && { ipv6Prefix: options.ipv6Prefix }),
     });
   });
   const fetchFn = options.fetch ?? globalThis.fetch;
@@ -55,7 +55,7 @@ export function fetchAdapter(
 
       // Build rate-limit headers
       const rateLimitHeaders = buildRateLimitHeaders(result, {
-        emit,
+        ...(emit !== undefined && { emit }),
         now: Date.now(),
       });
 

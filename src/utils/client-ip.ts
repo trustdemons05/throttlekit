@@ -75,7 +75,7 @@ function parseIpv6Bytes(addr: string): Uint8Array | null {
   // Normalise: handle "::ffff:1.2.3.4" (IPv4-mapped IPv6)
   const ipv4Mapped = /^::(?:ffff:)?(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(addr);
   if (ipv4Mapped) {
-    return toBytes(ipv4Mapped[1]);
+    return toBytes(ipv4Mapped[1]!);
   }
 
   // Handle full IPv6 with possible IPv4 tail
@@ -83,7 +83,7 @@ function parseIpv6Bytes(addr: string): Uint8Array | null {
   let cleanAddr = addr;
   const ipv4TailMatch = /:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(addr);
   if (ipv4TailMatch) {
-    ipv4Tail = ipv4TailMatch[1];
+    ipv4Tail = ipv4TailMatch[1]!;
     cleanAddr = addr.slice(0, ipv4TailMatch.index);
   }
 
@@ -109,7 +109,7 @@ function parseIpv6Bytes(addr: string): Uint8Array | null {
 
   const bytes = new Uint8Array(16);
   for (let i = 0; i < 8; i++) {
-    const val = parseInt(groups[i], 16);
+    const val = parseInt(groups[i] ?? '0', 16);
     if (Number.isNaN(val)) return null;
     bytes[i * 2] = (val >> 8) & 0xff;
     bytes[i * 2 + 1] = val & 0xff;
@@ -157,7 +157,7 @@ function isIpv4Mapped(addr: string): boolean {
  */
 function unwrapIpv4Mapped(addr: string): string {
   const match = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(addr);
-  return match ? match[1] : addr;
+  return match ? match[1]! : addr;
 }
 
 /**
@@ -176,7 +176,7 @@ function aggregateIpv6(addr: string, prefix: number): string {
   const maskedBytes = bigIntToBytes(masked, 16);
   const hextets: string[] = [];
   for (let i = 0; i < 8; i++) {
-    const val = (maskedBytes[i * 2] << 8) | maskedBytes[i * 2 + 1];
+    const val = ((maskedBytes[i * 2] ?? 0) << 8) | (maskedBytes[i * 2 + 1] ?? 0);
     hextets.push(val.toString(16));
   }
 
@@ -274,7 +274,7 @@ export function clientIp(
     const ips = getForwardedFor(headers);
     if (ips.length > 0) {
       const idx = Math.max(0, ips.length - trustProxy);
-      ip = ips[idx];
+      ip = ips[idx] ?? remoteAddr;
     } else {
       ip = remoteAddr;
     }
@@ -284,7 +284,7 @@ export function clientIp(
     const remoteMatches = trustedCidrs.some((cidr) => cidrContains(cidr, remoteAddr));
     if (remoteMatches) {
       const ips = getForwardedFor(headers);
-      ip = ips.length > 0 ? ips[0] : remoteAddr;
+      ip = ips.length > 0 ? (ips[0] ?? remoteAddr) : remoteAddr;
     } else {
       ip = remoteAddr;
     }

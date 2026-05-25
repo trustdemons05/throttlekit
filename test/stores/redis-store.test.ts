@@ -61,7 +61,7 @@ function assertFullStore(
 }
 
 function getRedisInstance() {
-  return MockRedis.mock.results[0].value;
+  return MockRedis.mock.results[0]!.value;
 }
 
 // ---------------------------------------------------------------------------
