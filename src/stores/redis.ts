@@ -471,12 +471,13 @@ class RedisStore implements Store {
  * Lua returns: [allowed (0/1), limit, remaining, resetAt, retryAfterMs]
  */
 function parseLuaResult(result: number[]): RateLimitResult {
+  // Lua script contract guarantees exactly 5 return values
   return {
     allowed: result[0] === 1,
-    limit: result[1] ?? 0,
-    remaining: result[2] ?? 0,
-    resetAt: result[3] ?? 0,
-    retryAfterMs: result[4] ?? 0,
+    limit: result[1]!,
+    remaining: result[2]!,
+    resetAt: result[3]!,
+    retryAfterMs: result[4]!,
   };
 }
 
