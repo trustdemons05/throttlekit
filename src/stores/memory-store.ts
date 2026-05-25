@@ -80,7 +80,7 @@ export class MemoryStore implements Store {
     return prev;
   }
 
-  private releaseLock(key: string): void {
+  private releaseLock(_key: string): void {
     // Lock auto-releases as the promise chain resolves.
     // Optional: periodic cleanup of resolved promises could be added here.
   }

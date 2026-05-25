@@ -1,4 +1,4 @@
-import type { StrategyFn, StrategyResult, RateLimitResult, Clock } from '../core/types.js';
+import type { StrategyFn, StrategyResult, Clock } from '../core/types.js';
 
 export type { StrategyFn, StrategyResult };
 
