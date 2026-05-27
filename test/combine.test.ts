@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { combine } from '../src/core/combine.js';
-import { rateLimit } from '../src/core/limiter.js';
+import { fixedWindow, tokenBucket } from '../src/core/factories.js';
 import { ManualClock } from '../src/core/clock.js';
 import { MemoryStore } from '../src/stores/memory-store.js';
 import type { Limiter, RateLimitResult } from '../src/core/types.js';
@@ -69,16 +69,14 @@ describe('combine()', () => {
     const storeA = new MemoryStore({ clock });
     const storeB = new MemoryStore({ clock });
 
-    const limiterA = rateLimit({
-      strategy: 'fixed-window',
+    const limiterA = fixedWindow({
       limit: 10,
       windowMs: 1000,
       clock,
       store: storeA,
     });
 
-    const limiterB = rateLimit({
-      strategy: 'fixed-window',
+    const limiterB = fixedWindow({
       limit: 5,
       windowMs: 2000,
       clock,
@@ -155,24 +153,21 @@ describe('combine()', () => {
     const storeB = new MemoryStore({ clock });
     const storeC = new MemoryStore({ clock });
 
-    const limiterA = rateLimit({
-      strategy: 'fixed-window',
+    const limiterA = fixedWindow({
       limit: 10,
       windowMs: 1000,
       clock,
       store: storeA,
     });
 
-    const limiterB = rateLimit({
-      strategy: 'fixed-window',
+    const limiterB = fixedWindow({
       limit: 5,
       windowMs: 2000,
       clock,
       store: storeB,
     });
 
-    const limiterC = rateLimit({
-      strategy: 'fixed-window',
+    const limiterC = fixedWindow({
       limit: 3,
       windowMs: 500,
       clock,
@@ -195,23 +190,21 @@ describe('combine()', () => {
     const storeA = new MemoryStore({ clock });
     const storeB = new MemoryStore({ clock });
 
-    const tokenBucket = rateLimit({
-      strategy: 'token-bucket',
+    const tbLimiter = tokenBucket({
       capacity: 10,
       refillRate: 10,
       clock,
       store: storeA,
     });
 
-    const fixedWindow = rateLimit({
-      strategy: 'fixed-window',
+    const fwLimiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,
       store: storeB,
     });
 
-    const combined = combine(tokenBucket, fixedWindow);
+    const combined = combine(tbLimiter, fwLimiter);
 
     const result = await combined.check('mixed-key');
 
@@ -227,8 +220,7 @@ describe('combine()', () => {
     const clock = new ManualClock(5000000);
     const store = new MemoryStore({ clock });
 
-    const limiterA = rateLimit({
-      strategy: 'fixed-window',
+    const limiterA = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,

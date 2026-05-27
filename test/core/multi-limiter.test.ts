@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { multiRateLimit, all, any } from '../../src/core/multi-limiter.js';
-import { rateLimit } from '../../src/core/limiter.js';
+import { tokenBucket, fixedWindow } from '../../src/core/factories.js';
 import { ManualClock } from '../../src/core/clock.js';
 import { MemoryStore } from '../../src/stores/memory-store.js';
 
@@ -25,16 +25,14 @@ interface Ctx {
 }
 
 function createLimiters(clock: ManualClock, store: MemoryStore) {
-  const ipLimiter = rateLimit({
-    strategy: 'token-bucket',
+  const ipLimiter = tokenBucket({
     capacity: 10,
     refillRate: 10,
     clock,
     store,
   });
 
-  const userLimiter = rateLimit({
-    strategy: 'fixed-window',
+  const userLimiter = fixedWindow({
     limit: 5,
     windowMs: 60_000,
     clock,
@@ -159,16 +157,14 @@ describe('multiRateLimit', () => {
       const clock = new ManualClock(1_000_000);
       const store = new MemoryStore({ clock });
 
-      const strictIp = rateLimit({
-        strategy: 'token-bucket',
+      const strictIp = tokenBucket({
         capacity: 1,
         refillRate: 0, // no refill
         clock,
         store,
       });
 
-      const strictUser = rateLimit({
-        strategy: 'fixed-window',
+      const strictUser = fixedWindow({
         limit: 1,
         windowMs: 60_000,
         clock,
@@ -208,16 +204,14 @@ describe('multiRateLimit', () => {
       const clock = new ManualClock(1_000_000);
       const store = new MemoryStore({ clock });
 
-      const fastRecover = rateLimit({
-        strategy: 'token-bucket',
+      const fastRecover = tokenBucket({
         capacity: 1,
         refillRate: 0, // no refill for deterministic test
         clock,
         store,
       });
 
-      const slowRecover = rateLimit({
-        strategy: 'fixed-window',
+      const slowRecover = fixedWindow({
         limit: 1,
         windowMs: 60_000,
         clock,

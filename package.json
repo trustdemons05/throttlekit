@@ -1,18 +1,94 @@
 {
   "name": "throttlekit",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Pluggable, framework-agnostic rate-limiting toolkit with 7 algorithms, clock-injected deterministic testing, and zero required dependencies.",
   "license": "MIT",
-  "keywords": ["rate-limit", "rate-limiter", "throttle", "token-bucket", "sliding-window", "gcra", "express", "middleware", "redis"],
-  "repository": { "type": "git", "url": "git+https://github.com/trustdemons05/throttlekit.git" },
+  "keywords": [
+    "rate-limit",
+    "rate-limiter",
+    "throttle",
+    "token-bucket",
+    "sliding-window",
+    "gcra",
+    "express",
+    "middleware",
+    "redis",
+    "postgres",
+    "hono",
+    "fastify",
+    "koa",
+    "nextjs",
+    "edge",
+    "cloudflare-workers",
+    "ddos",
+    "adaptive-concurrency",
+    "backpressure"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trustdemons05/throttlekit.git"
+  },
   "homepage": "https://github.com/trustdemons05/throttlekit#readme",
-  "bugs": { "url": "https://github.com/trustdemons05/throttlekit/issues" },
+  "bugs": {
+    "url": "https://github.com/trustdemons05/throttlekit/issues"
+  },
   "type": "module",
   "exports": {
-    ".":          { "import": "./dist/index.js",            "require": "./dist/index.cjs" },
-    "./express":  { "import": "./dist/adapters/express.js", "require": "./dist/adapters/express.cjs" },
-    "./fetch":    { "import": "./dist/adapters/fetch.js",   "require": "./dist/adapters/fetch.cjs" },
-    "./redis":    { "import": "./dist/stores/redis.js",     "require": "./dist/stores/redis.cjs" }
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./express": {
+      "import": "./dist/adapters/express.js",
+      "require": "./dist/adapters/express.cjs"
+    },
+    "./fetch": {
+      "import": "./dist/adapters/fetch.js",
+      "require": "./dist/adapters/fetch.cjs"
+    },
+    "./redis": {
+      "import": "./dist/stores/redis.js",
+      "require": "./dist/stores/redis.cjs"
+    },
+    "./hono": {
+      "import": "./dist/adapters/hono.js",
+      "require": "./dist/adapters/hono.cjs"
+    },
+    "./fastify": {
+      "import": "./dist/adapters/fastify.js",
+      "require": "./dist/adapters/fastify.cjs"
+    },
+    "./koa": {
+      "import": "./dist/adapters/koa.js",
+      "require": "./dist/adapters/koa.cjs"
+    },
+    "./next": {
+      "import": "./dist/adapters/next.js",
+      "require": "./dist/adapters/next.cjs"
+    },
+    "./otel": {
+      "import": "./dist/adapters/otel.js",
+      "require": "./dist/adapters/otel.cjs"
+    },
+    "./postgres": {
+      "import": "./dist/stores/postgres.js",
+      "require": "./dist/stores/postgres.cjs"
+    },
+    "./dashboard": {
+      "import": "./dist/dashboard/server.js",
+      "require": "./dist/dashboard/server.cjs"
+    },
+    "./cloudflare": {
+      "import": "./dist/stores/cloudflare.js",
+      "require": "./dist/stores/cloudflare.cjs"
+    },
+    "./token-budget": {
+      "import": "./dist/token-budget/index.js",
+      "require": "./dist/token-budget/index.cjs"
+    }
+  },
+  "bin": {
+    "throttlekit-dashboard": "dist/dashboard/bin.js"
   },
   "files": [
     "dist",
@@ -26,13 +102,17 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "bench": "node benchmark/algorithms.js",
+    "bench:compare": "node benchmark/compare.js",
+    "bench:sketch": "node benchmark/sketch.js",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "express-rate-limit": "^8.5.2",
     "fast-check": "^3.19.0",
+    "rate-limiter-flexible": "^11.1.0",
     "rimraf": "^5.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",

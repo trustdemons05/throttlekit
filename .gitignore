@@ -7,3 +7,6 @@ coverage/
 .env
 .env.local
 *.tgz
+undefined/
+.opencode/
+

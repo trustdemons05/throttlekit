@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { nextRateLimit } from '../../src/adapters/next.js';
-import { rateLimit } from '../../src/core/limiter.js';
+import { fixedWindow } from '../../src/core/factories.js';
 import { ManualClock } from '../../src/core/clock.js';
 import { MemoryStore } from '../../src/stores/memory-store.js';
 import { createFailingStore } from '../helpers/mock-store.js';
@@ -34,8 +34,7 @@ function createMockRequest(headersInit: Record<string, string> = {}): Request {
 function createTestLimiter(limit: number = 5, windowMs: number = 1000) {
   const clock = new ManualClock(1000000);
   const store = new MemoryStore({ clock });
-  const limiter = rateLimit({
-    strategy: 'fixed-window',
+  const limiter = fixedWindow({
     limit,
     windowMs,
     clock,
@@ -122,8 +121,7 @@ describe('nextRateLimit', () => {
   it('fail-open returns limited=false on store error (default)', async () => {
     const store = createFailingStore();
     const clock = new ManualClock(1000000);
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,
@@ -143,8 +141,7 @@ describe('nextRateLimit', () => {
   it('fail-closed returns limited=true and 503 Response on store error', async () => {
     const store = createFailingStore();
     const clock = new ManualClock(1000000);
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,

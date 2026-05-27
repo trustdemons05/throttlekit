@@ -12,7 +12,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { rateLimit, LimiterImpl } from '../src/core/limiter.js';
+import { LimiterImpl, rateLimit } from '../src/core/limiter.js';
+import { tokenBucket, fixedWindow, slidingWindowLog, slidingWindowCounter } from '../src/core/factories.js';
 import { ManualClock } from '../src/core/clock.js';
 import { MemoryStore } from '../src/stores/memory-store.js';
 import type { Limiter } from '../src/core/types.js';
@@ -32,9 +33,8 @@ function createLimiter(
   switch (strategy) {
     case 'token-bucket':
       return {
-        limiter: rateLimit({
+        limiter: tokenBucket({
           ...base,
-          strategy: 'token-bucket' as const,
           capacity: 10,
           refillRate: 1,
         }),
@@ -43,9 +43,8 @@ function createLimiter(
       };
     case 'fixed-window':
       return {
-        limiter: rateLimit({
+        limiter: fixedWindow({
           ...base,
-          strategy: 'fixed-window' as const,
           limit: 5,
           windowMs: 1000,
         }),
@@ -54,9 +53,8 @@ function createLimiter(
       };
     case 'sliding-window-log':
       return {
-        limiter: rateLimit({
+        limiter: slidingWindowLog({
           ...base,
-          strategy: 'sliding-window-log' as const,
           limit: 5,
           windowMs: 1000,
         }),
@@ -65,9 +63,8 @@ function createLimiter(
       };
     case 'sliding-window-counter':
       return {
-        limiter: rateLimit({
+        limiter: slidingWindowCounter({
           ...base,
-          strategy: 'sliding-window-counter' as const,
           limit: 5,
           windowMs: 1000,
         }),
@@ -226,8 +223,7 @@ describe.each(STRATEGIES)('rateLimit with %s strategy', (strategyName) => {
 
 describe('rateLimit defaults', () => {
   it('uses MemoryStore and SystemClock by default', async () => {
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
     });
@@ -240,8 +236,7 @@ describe('rateLimit defaults', () => {
   it('accepts explicit store and clock', async () => {
     const clock = new ManualClock(500000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 3,
       windowMs: 1000,
       clock,

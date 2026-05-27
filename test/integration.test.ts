@@ -9,7 +9,8 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { rateLimit, LimiterImpl } from '../src/core/limiter.js';
+import { LimiterImpl } from '../src/core/limiter.js';
+import { fixedWindow, tokenBucket } from '../src/core/factories.js';
 import { combine } from '../src/core/combine.js';
 import { expressAdapter } from '../src/adapters/express.js';
 import { fetchAdapter } from '../src/adapters/fetch.js';
@@ -24,8 +25,7 @@ describe('Limiter + MemoryStore integration', () => {
   it('check → allow then block within window', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 3,
       windowMs: 1000,
       clock,
@@ -52,8 +52,7 @@ describe('Limiter + MemoryStore integration', () => {
   it('peek returns current state without consuming', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,
@@ -77,8 +76,7 @@ describe('Limiter + MemoryStore integration', () => {
   it('reset clears rate-limit state', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 1,
       windowMs: 1000,
       clock,
@@ -108,16 +106,14 @@ describe('combine() integration', () => {
     const storeA = new MemoryStore({ clock });
     const storeB = new MemoryStore({ clock });
 
-    const perSecond = rateLimit({
-      strategy: 'fixed-window',
+    const perSecond = fixedWindow({
       limit: 10,
       windowMs: 1000,
       clock,
       store: storeA,
     });
 
-    const perHour = rateLimit({
-      strategy: 'fixed-window',
+    const perHour = fixedWindow({
       limit: 1000,
       windowMs: 3_600_000,
       clock,
@@ -158,23 +154,21 @@ describe('combine() integration', () => {
     const storeA = new MemoryStore({ clock });
     const storeB = new MemoryStore({ clock });
 
-    const tokenBucket = rateLimit({
-      strategy: 'token-bucket',
+    const tbLimiter = tokenBucket({
       capacity: 3,
       refillRate: 1, // 1 token/sec
       clock,
       store: storeA,
     });
 
-    const fixedWindow = rateLimit({
-      strategy: 'fixed-window',
+    const fwLimiter = fixedWindow({
       limit: 10,
       windowMs: 1000,
       clock,
       store: storeB,
     });
 
-    const combined = combine(tokenBucket, fixedWindow);
+    const combined = combine(tbLimiter, fwLimiter);
 
     // Exhaust token bucket (3 tokens)
     expect((await combined.check('multi-key')).allowed).toBe(true);
@@ -207,8 +201,7 @@ describe('Express adapter integration', () => {
   it('allows requests within limit, blocks beyond', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 2,
       windowMs: 1000,
       clock,
@@ -241,8 +234,7 @@ describe('Express adapter integration', () => {
   it('sets standard rate-limit headers on every response', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,
@@ -270,8 +262,7 @@ describe('Fetch adapter integration', () => {
   it('returns 429 when rate limited and passes through on success', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 1,
       windowMs: 1000,
       clock,
@@ -307,8 +298,7 @@ describe('Fetch adapter integration', () => {
   it('injects RateLimit headers into upstream response', async () => {
     const clock = new ManualClock(1_000_000_000_000);
     const store = new MemoryStore({ clock });
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 10,
       windowMs: 1000,
       clock,
@@ -340,8 +330,7 @@ describe('Fetch adapter integration', () => {
     };
 
     const clock = new ManualClock(1_000_000_000_000);
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,

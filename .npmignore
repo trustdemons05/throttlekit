@@ -1,10 +1,22 @@
-docs/
-test/
-benchmarks/
-.github/
+# Source
 src/
-tsconfig.json
-vitest.config.ts
-tsup.config.ts
-*.test.ts
+test/
+benchmark/
+docs/
+demo/
 coverage/
+.github/
+.hive/
+.opencode/
+# Config
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+biome.json
+.gitignore
+.npmignore
+# Docs (included via files field)
+throttlekit-*.md
+CONTRIBUTING.md
+JOURNEY.md
+SCOREBOARD.md

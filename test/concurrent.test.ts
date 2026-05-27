@@ -15,7 +15,7 @@ import { createFixedWindowStrategy } from '../src/strategies/fixed-window.js';
 import { createSlidingLogStrategy } from '../src/strategies/sliding-window-log.js';
 import { createSlidingCounterStrategy } from '../src/strategies/sliding-window-counter.js';
 import { MemoryStore } from '../src/stores/memory-store.js';
-import { rateLimit } from '../src/core/limiter.js';
+import { fixedWindow } from '../src/core/factories.js';
 
 // ---------------------------------------------------------------------------
 // Strategy-level concurrency (synchronous, same timestamp)
@@ -66,7 +66,7 @@ describe('MemoryStore per-key mutex', () => {
 describe('Limiter + Store integration', () => {
   it('200 concurrent requests → exactly 100 allowed', async () => {
     const clock = new ManualClock(1_000_000_000_000);
-    const limiter = rateLimit({ strategy: 'fixed-window', limit: 100, windowMs: 60_000, clock });
+    const limiter = fixedWindow({ limit: 100, windowMs: 60_000, clock });
     const results = await runConcurrent(() => limiter.check('integration-key', 1), 200);
     expect(results.filter(r => r.allowed).length).toBe(100);
   });

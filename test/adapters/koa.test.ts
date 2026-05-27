@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { koaRateLimit } from '../../src/adapters/koa.js';
 import type { KoaContext } from '../../src/adapters/koa.js';
-import { rateLimit } from '../../src/core/limiter.js';
+import { fixedWindow } from '../../src/core/factories.js';
 import { ManualClock } from '../../src/core/clock.js';
 import { MemoryStore } from '../../src/stores/memory-store.js';
 import { createFailingStore } from '../helpers/mock-store.js';
@@ -28,8 +28,7 @@ function createMockKoaContext(headersInit: Record<string, string> = {}) {
 function createTestLimiter(limit: number = 5, windowMs: number = 1000) {
   const clock = new ManualClock(1000000);
   const store = new MemoryStore({ clock });
-  const limiter = rateLimit({
-    strategy: 'fixed-window',
+  const limiter = fixedWindow({
     limit,
     windowMs,
     clock,
@@ -107,8 +106,7 @@ describe('koaRateLimit', () => {
   it('allows request on store error with fail-open (default)', async () => {
     const store = createFailingStore();
     const clock = new ManualClock(1000000);
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,
@@ -126,8 +124,7 @@ describe('koaRateLimit', () => {
   it('returns 503 on store error with fail-closed', async () => {
     const store = createFailingStore();
     const clock = new ManualClock(1000000);
-    const limiter = rateLimit({
-      strategy: 'fixed-window',
+    const limiter = fixedWindow({
       limit: 5,
       windowMs: 1000,
       clock,

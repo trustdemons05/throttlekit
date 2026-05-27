@@ -23,6 +23,17 @@ export { LimiterImpl, rateLimit } from './core/limiter.js';
 export { combine } from './core/combine.js';
 export { multiRateLimit, all, any } from './core/multi-limiter.js';
 
+// --- First-class strategy factories ---
+export {
+  tokenBucket, fixedWindow, slidingWindowLog,
+  slidingWindowCounter, slidingWindow, gcra,
+} from './core/factories.js';
+export type {
+  TokenBucketOptions, FixedWindowOptions,
+  SlidingWindowLogOptions, SlidingWindowCounterOptions,
+  SlidingWindowOptions, GcraOptions,
+} from './core/factories.js';
+
 export { MemoryStore } from './stores/memory-store.js';
 export { createRedisStore } from './stores/redis.js';
 export { createTwoTierStore } from './stores/two-tier.js';
@@ -38,7 +49,6 @@ export { createAdaptiveConcurrency } from './strategies/adaptive-concurrency.js'
 export { createSlidingWindowStrategy, slidingWindowConsume } from './strategies/sliding-window.js';
 
 // Convenience aliases (also exported under createXxx names above)
-export { createGcraStrategy as gcra } from './strategies/gcra.js';
 export { createLeakyBucket as leakyBucket } from './strategies/leaky-bucket.js';
 export { createAdaptiveConcurrency as adaptiveConcurrency } from './strategies/adaptive-concurrency.js';
 export { createTwoTierStore as twoTier } from './stores/two-tier.js';
@@ -48,3 +58,31 @@ export type { ClientIpOptions } from './utils/client-ip.js';
 export { hmacKeyer, hashKey } from './utils/hmac-key.js';
 export { buildRateLimitHeaders } from './utils/headers.js';
 export type { BuildHeadersOptions } from './utils/headers.js';
+
+// --- Sketch Rate Limiter ---
+export { sketchRateLimit, mergeableSketch, sketchSnapshotFromBytes } from './sketch/index.js';
+export type {
+  SketchRateLimitOptions, SketchRateLimiter,
+  MergeableSketch, MergeableSketchOptions, SketchSnapshot
+} from './sketch/types.js';
+// --- Admission Control ---
+export { adaptiveThrottle, fairShare, weightedFairShare, weightedMaxMin } from './admission/index.js';
+export type {
+  AdaptiveThrottle, AdaptiveThrottleOptions,
+  FairShareLimiter, FairShareOptions,
+  WeightedFairShareLimiter, WeightedFairShareOptions
+} from './admission/index.js';
+// --- Analytics ---
+export { withAnalytics } from './analytics/index.js';
+export type {
+  AnalyticsOptions, AnalyticsLimiter, AnalyticsSnapshot, HeavyHitter
+} from './analytics/types.js';
+
+// --- Dashboard ---
+export { createDashboard } from './dashboard/server.js';
+// --- Token Budget ---
+export { tokenBudgetLimiter } from './token-budget/index.js';
+// --- Cloudflare Workers stores ---
+export { DurableObjectStore, ThrottleKitDO } from './stores/cloudflare-do.js';
+export { D1Store } from './stores/cloudflare-d1.js';
+export { KVStore } from './stores/cloudflare-kv.js';

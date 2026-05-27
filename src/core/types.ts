@@ -76,6 +76,18 @@ export interface Limiter {
    * @param cost - Request cost (default 1)
    */
   check(key: string, cost?: number): Promise<RateLimitResult>;
+
+  /**
+   * Check multiple keys concurrently. On Redis stores with auto-pipelining,
+   * these collapse to a single round trip.
+   */
+  checkMany?(keys: string[], cost?: number): Promise<RateLimitResult[]>;
+
+  /**
+   * Synchronous batch check for stores that support applySync (e.g. MemoryStore).
+   * Throws UnsupportedOperationError if the store does not support sync.
+   */
+  checkManySync?(keys: string[], cost?: number): RateLimitResult[];
 }
 
 /**
@@ -153,6 +165,12 @@ export type TwoTierMode = 'strict' | 'cached-deny' | 'leased';
 export interface LeaseConfig {
   batch: number;
   lowWater?: number;
+  /**
+   * When true, local lease credits expire at the L2 window boundary (resetAt).
+   * Effect: overshoot bound becomes admitted <= Limit, independent of fleet size N.
+   * Without windowCoupled: overshoot = Limit + N*(Batch-1).
+   */
+  windowCoupled?: boolean;
 }
 
 // --- Header emit options ---

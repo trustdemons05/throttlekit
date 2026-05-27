@@ -144,6 +144,24 @@ export class LimiterImpl implements Limiter {
   }
 
   /**
+   * Check multiple keys concurrently.
+   * Fires all checks via Promise.all — on Redis stores with auto-pipelining,
+   * these collapse to a single round trip.
+   */
+  async checkMany(keys: string[], cost: number = 1): Promise<RateLimitResult[]> {
+    return Promise.all(keys.map(key => this.check(key, cost)));
+  }
+
+  /**
+   * Synchronous batch check for stores that support applySync.
+   * Delegates to checkSync for each key.
+   * Throws UnsupportedOperationError if the store does not support sync.
+   */
+  checkManySync(keys: string[], cost: number = 1): RateLimitResult[] {
+    return keys.map(key => this.checkSync(key, cost));
+  }
+
+  /**
    * Peek at the current rate-limit state WITHOUT consuming capacity.
    * Does NOT mutate the backing store or the strategy's internal state.
    *
@@ -207,6 +225,10 @@ export class LimiterImpl implements Limiter {
 
 /**
  * Create a rate limiter from a RateLimitOptions configuration.
+ *
+ * @deprecated Use the named strategy factories instead:
+ *   tokenBucket(), fixedWindow(), slidingWindowLog(),
+ *   slidingWindowCounter(), slidingWindow(), gcra()
  *
  * @example
  * ```typescript

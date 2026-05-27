@@ -135,12 +135,20 @@ export function createTwoTierStore(options: TwoTierStoreOptions): Store {
         case 'leased': {
           const batch = lease?.batch ?? 10;
           const lowWater = lease?.lowWater ?? Math.max(1, Math.floor(batch / 4));
+          const windowCoupled = lease?.windowCoupled ?? false;
 
           // Read current leased state from L1
           const leased = await l1.get<LeasedState>(key);
 
-          // If no lease exists or remaining is below low-water, refill from L2
-          if (leased === null || leased.remaining < lowWater) {
+          // Window-coupled invalidation: if the clock has passed the L2 window
+          // boundary (resetAt), treat the lease as expired regardless of remaining
+          const leaseExpired = windowCoupled
+            && leased !== null
+            && clock !== undefined
+            && (clock.now() >= leased.resetAt);
+
+          // If no lease exists, remaining is below low-water, OR lease expired via windowCoupled
+          if (leased === null || leased.remaining < lowWater || leaseExpired) {
             // Attempt to acquire a batch from L2
             // We apply the transform and capture the result
             const l2Result = await l2.apply<S, T>(key, ttlMs, transform);
