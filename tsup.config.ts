@@ -17,6 +17,7 @@ export default defineConfig({
     'dashboard/bin': 'src/dashboard/bin.ts',
     'stores/cloudflare': 'src/stores/cloudflare.ts',
     'token-budget/index': 'src/token-budget/index.ts',
+    'testkit/index': 'src/testkit/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
@@ -26,5 +27,5 @@ export default defineConfig({
   target: 'node18',
   outDir: 'dist',
   treeshake: true,
-  external: ['ioredis', 'express', '@opentelemetry/api', 'pg'],
+  external: ['ioredis', 'express', '@opentelemetry/api', 'pg', 'vitest'],
 });

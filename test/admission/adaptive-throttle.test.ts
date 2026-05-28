@@ -38,9 +38,10 @@ describe('adaptiveThrottle', () => {
     const clock = new ManualClock(1_000_000);
     const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock });
 
-    // All requests rejected
+    // All requests rejected — request() counts the attempt, record() records rejection
     for (let i = 0; i < 100; i++) {
-      throttle.record(false);
+      throttle.request();   // counts the attempt
+      throttle.record(false); // records rejection
     }
 
     // p = max(0, (100 - 0) / 101) = 100/101 ≈ 0.99
@@ -51,9 +52,10 @@ describe('adaptiveThrottle', () => {
     const clock = new ManualClock(1_000_000);
     const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock });
 
-    // All requests rejected
+    // All requests rejected — request() counts the attempt, record() records rejection
     for (let i = 0; i < 100; i++) {
-      throttle.record(false);
+      throttle.request();   // counts the attempt
+      throttle.record(false); // records rejection
     }
 
     expect(throttle.dropProbability).toBeGreaterThan(0.9);
@@ -71,15 +73,15 @@ describe('adaptiveThrottle', () => {
 
     // First, feed all rejected to build up drop probability
     for (let i = 0; i < 50; i++) {
-      throttle.record(false);
+      throttle.request();   // counts the attempt
+      throttle.record(false); // records rejection
     }
 
     // Drop probability should be significant now
     const p = throttle.dropProbability;
     expect(p).toBeGreaterThan(0.4);
 
-    // Now simulate request() calls with a deterministic mock for Math.random
-    // Use a seeded pseudo-random to get deterministic results
+    // Now simulate request() calls with a deterministic seeded PRNG
     let highPriorityPassed = 0;
     let lowPriorityPassed = 0;
     const totalSamples = 200;
@@ -93,7 +95,7 @@ describe('adaptiveThrottle', () => {
     // With high priority, drop probability is halved
     expect(effectivePHigh).toBeLessThan(effectivePLow);
 
-    // Run stochastic test with enough samples
+    // Run stochastic test with enough samples using injected rng
     // Seed the random for deterministic behavior
     let seed = 12345;
     const pseudoRandom = (): number => {
@@ -101,30 +103,23 @@ describe('adaptiveThrottle', () => {
       return (seed - 1) / 2147483646;
     };
 
-    // Save original Math.random
-    const originalRandom = Math.random;
-    Math.random = pseudoRandom;
+    // Create a fresh throttle with the seeded rng and build up drop probability
+    const clock2 = new ManualClock(1_000_000);
+    const throttle2 = adaptiveThrottle({ k: 1, windowMs: 60_000, clock: clock2, rng: pseudoRandom });
 
-    try {
-      // Create a fresh throttle and build up drop probability
-      const clock2 = new ManualClock(1_000_000);
-      const throttle2 = adaptiveThrottle({ k: 1, windowMs: 60_000, clock: clock2 });
-
-      for (let i = 0; i < 50; i++) {
-        throttle2.record(false);
-      }
-
-      for (let i = 0; i < totalSamples; i++) {
-        // Alternate high and low priority requests
-        if (throttle2.request(2)) highPriorityPassed++;
-        if (throttle2.request(0.5)) lowPriorityPassed++;
-      }
-
-      // High priority should have a higher pass rate
-      expect(highPriorityPassed).toBeGreaterThan(lowPriorityPassed);
-    } finally {
-      Math.random = originalRandom;
+    for (let i = 0; i < 50; i++) {
+      throttle2.request();
+      throttle2.record(false);
     }
+
+    for (let i = 0; i < totalSamples; i++) {
+      // Alternate high and low priority requests
+      if (throttle2.request(2)) highPriorityPassed++;
+      if (throttle2.request(0.5)) lowPriorityPassed++;
+    }
+
+    // High priority should have a higher pass rate
+    expect(highPriorityPassed).toBeGreaterThan(lowPriorityPassed);
   });
 
   it('request returns true when drop probability is 0', () => {
@@ -138,18 +133,19 @@ describe('adaptiveThrottle', () => {
 
     expect(throttle.dropProbability).toBe(0);
 
-    // Every request should pass
-    for (let i = 0; i < 20; i++) {
-      expect(throttle.request()).toBe(true);
-    }
+    // The first request sees p=0 and should pass. Subsequent request() calls
+    // without record() are attempts and will raise drop probability.
+    expect(throttle.request()).toBe(true);
   });
 
   it('reset clears all state', () => {
     const clock = new ManualClock(1_000_000);
-    const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock });
+    // Use deterministic rng so the first post-reset request passes
+    const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock, rng: () => 1 });
 
     // Build up rejections
     for (let i = 0; i < 100; i++) {
+      throttle.request();
       throttle.record(false);
     }
 
@@ -159,5 +155,45 @@ describe('adaptiveThrottle', () => {
 
     expect(throttle.dropProbability).toBe(0);
     expect(throttle.request()).toBe(true);
+  });
+
+  it('after 100 request() calls without record(), dropProbability should increase', () => {
+    const clock = new ManualClock(1_000_000);
+    const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock });
+
+    // Call request() 100 times without any record() calls
+    // Each request() increments the request counter but no accepts are recorded
+    for (let i = 0; i < 100; i++) {
+      throttle.request();
+    }
+
+    // requests=100, accepts=0, p = (100 - 0) / 101 ≈ 0.99
+    expect(throttle.dropProbability).toBeGreaterThan(0.9);
+  });
+
+  it('the formula matches Google SRE Chapter 21 exactly', () => {
+    const clock = new ManualClock(1_000_000);
+    const throttle = adaptiveThrottle({ k: 2, windowMs: 30_000, clock });
+
+    // Simulate 150 requests total
+    for (let i = 0; i < 150; i++) {
+      throttle.request();
+    }
+
+    // 100 of those 150 requests were accepted by the backend
+    for (let i = 0; i < 100; i++) {
+      throttle.record(true);
+    }
+
+    // 50 were rejected — record(false) is called but does not change state
+    for (let i = 0; i < 50; i++) {
+      throttle.record(false);
+    }
+
+    // Google SRE formula: p = max(0, (requests - k * accepts) / (requests + 1))
+    // = max(0, (150 - 2 * 100) / 151)
+    // = max(0, -50 / 151)
+    // = 0
+    expect(throttle.dropProbability).toBe(0);
   });
 });

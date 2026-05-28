@@ -373,13 +373,41 @@ export function gcraLuaMirror(
   const emissionInterval = periodMs / limit;
   const burstOffset = burst * emissionInterval;
 
+  // Cost exceeds limit: reject immediately (mirrors gcraConsume behaviour)
+  if (cost > limit) {
+    return {
+      state: state ?? now,
+      result: {
+        allowed: false,
+        limit,
+        remaining: limit,
+        resetAt: now,
+        retryAfterMs: Infinity,
+      },
+    };
+  }
+
+  // Zero or negative cost: allow without consuming capacity (mirrors gcraConsume)
+  if (cost <= 0) {
+    const tat = state ?? now;
+    const headroom = burstOffset - (tat - now);
+    const remaining = Math.max(0, Math.min(burst, Math.floor(headroom / emissionInterval)));
+    return {
+      state: state ?? now,
+      result: {
+        allowed: true,
+        limit,
+        remaining,
+        resetAt: now + burstOffset,
+        retryAfterMs: 0,
+      },
+    };
+  }
+
   // Lua reads tat from state or defaults to now
   let tat = state ?? now;
 
-  // NOTE: The Lua script ignores the cost parameter and always adds
-  // emission_interval once (hard-coded for cost=1). This mirror preserves
-  // that exact behaviour so mismatches are caught.
-  const newTat = Math.max(now, tat) + emissionInterval;
+  const newTat = Math.max(now, tat) + emissionInterval * cost;
 
   if (newTat - burstOffset <= now) {
     const headroom = burstOffset - (newTat - now);

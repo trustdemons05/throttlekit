@@ -114,6 +114,8 @@ ThrottleKit uses Node.js conditional exports. Every path is available as ESM (`.
 | `throttlekit/otel` | `instrumentLimiter`, `instrumentGuard` — OpenTelemetry wrappers |
 | `throttlekit/postgres` | `PostgresStore` — PostgreSQL-backed store class |
 
+| `throttlekit/testkit` | `runStoreConformance`, `mockRedisClient` |
+
 ## Framework Adapters
 
 All adapters share a common set of options: `keyExtractor`, `failStrategy` (`'open'` / `'closed'`), `trustProxy`, `ipv6Prefix`, `emit` (header mode), `cost`, and `onLimited` / `handler` for custom 429 responses.

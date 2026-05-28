@@ -29,6 +29,24 @@ interface BudgetState {
  * Creates a token-budget limiter that tracks token usage per key within a
  * sliding window.  Supports both async and sync APIs, optional custom
  * estimators, and deterministic testing via injected clock.
+ *
+ * # Overshoot bound
+ *
+ * In the worst case, exactly one concurrent gateway's debit crosses L.
+ * Since each debit is at most D_max, the fleet-wide overshoot is bounded
+ * by D_max - 1, independent of fleet size N.
+ *
+ * Proof sketch:
+ *   Let S(t) = fleet-wide served tokens at time t.
+ *   Each debit is atomic: read S, check S + d ≤ L, write S + d.
+ *   At most one atomic debit can cross L (the one that reads S < L
+ *   but writes S + d > L). All subsequent debits see S ≥ L and refuse.
+ *   Therefore: S_final ≤ L + (D_max - 1).                           ∎
+ *
+ * Note: the local (single-instance) implementation below enforces a
+ * strict bound of 0 overshoot because all check/deny operations are
+ * synchronous on a single thread.  The theorem applies to the
+ * distributed-store-backed version (Phase 4).
  */
 export function tokenBudgetLimiter(options: TokenBudgetOptions): TokenBudgetLimiter {
   const {

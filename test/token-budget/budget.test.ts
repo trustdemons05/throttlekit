@@ -244,6 +244,79 @@ describe('tokenBudgetLimiter', () => {
     });
   });
 
+  describe('overshoot bound (local single-instance)', () => {
+    it('never allows total used tokens to exceed budgetPerWindow', () => {
+      const clock = new ManualClock(BASE_TIME);
+      const limiter = createLimiter(100, 60_000, clock);
+
+      let totalAllowed = 0;
+
+      // Rapid sequential debits at various sizes — total requested far > budget
+      const debits = [51, 51, 20, 20, 10, 10, 5, 5];
+      for (const d of debits) {
+        const result = limiter.checkSync('key', d);
+        if (result.allowed) {
+          totalAllowed += d;
+        }
+      }
+
+      // The local implementation is synchronous/atomic so overshoot is 0.
+      // 51 allowed (used=51), 51 denied, 20 allowed (used=71), 20 allowed (used=91),
+      // 10 denied, 10 denied, 5 allowed (used=96), 5 denied
+      expect(totalAllowed).toBeLessThanOrEqual(100);
+      expect(totalAllowed).toBe(96);
+    });
+
+    it('single debit exceeding full budget is denied immediately', () => {
+      const clock = new ManualClock(BASE_TIME);
+      const limiter = createLimiter(100, 60_000, clock);
+
+      const result = limiter.checkSync('key', 101);
+      expect(result.allowed).toBe(false);
+      expect(result.remaining).toBe(100);
+    });
+
+    it('exact budget boundary allows all tokens', () => {
+      const clock = new ManualClock(BASE_TIME);
+      const limiter = createLimiter(100, 60_000, clock);
+
+      const r1 = limiter.checkSync('key', 100);
+      expect(r1.allowed).toBe(true);
+      expect(r1.remaining).toBe(0);
+
+      // Next request must be denied
+      const r2 = limiter.checkSync('key', 1);
+      expect(r2.allowed).toBe(false);
+      expect(r2.remaining).toBe(0);
+    });
+
+    it('overshoot bound simulation: D_max - 1 worst case in single instance is 0', () => {
+      // With a single instance, the atomic check prevents any overshoot.
+      // This test simulates the worst-case scenario for a distributed
+      // system (where D_max - 1 would be the bound) and verifies the
+      // local implementation is actually stricter.
+      const L = 100;
+      const D_max = 60;
+      const clock = new ManualClock(BASE_TIME);
+      const limiter = createLimiter(L, 60_000, clock);
+
+      let totalAllowed = 0;
+      const attempts = 10;
+
+      for (let i = 0; i < attempts; i++) {
+        const result = limiter.checkSync('key', D_max);
+        if (result.allowed) {
+          totalAllowed += D_max;
+        }
+      }
+
+      // Local: only one debit of 60 passes (60 ≤ 100)
+      // Total allowed ≤ L (strict bound of 0 overshoot)
+      expect(totalAllowed).toBeLessThanOrEqual(L);
+      expect(totalAllowed).toBe(60);
+    });
+  });
+
   describe('reset()', () => {
     it('clears budget for a key', async () => {
       const clock = new ManualClock(BASE_TIME);

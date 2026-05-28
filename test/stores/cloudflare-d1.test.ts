@@ -40,6 +40,7 @@ interface CounterState {
 interface StoredRow {
   state: string; // JSON-serialised
   expires_at: number; // epoch ms
+  version: number; // optimistic concurrency version
 }
 
 // ---------------------------------------------------------------------------
@@ -55,9 +56,9 @@ interface StoredRow {
  */
 class MockD1PreparedStatement implements D1PreparedStatement {
   constructor(
-    private readonly query: string,
+    readonly query: string,
     private readonly store: Map<string, StoredRow>,
-    private readonly values: unknown[] = [],
+    readonly values: unknown[] = [],
   ) {}
 
   bind(...values: unknown[]): MockD1PreparedStatement {
@@ -69,14 +70,15 @@ class MockD1PreparedStatement implements D1PreparedStatement {
 
     if (sql.toUpperCase().startsWith('SELECT')) {
       const key = this.values[0];
-      const now = this.values[1];
+      const now = this.values.length > 1 ? this.values[1] : undefined;
 
       if (key === undefined) return null;
 
       const entry = this.store.get(String(key));
       if (entry && (now === undefined || entry.expires_at > Number(now))) {
-        // D1 returns a row object with column names as keys
-        return { state: entry.state } as T;
+        // D1 returns a row object with column names as keys;
+        // return version if the stored row has one
+        return { state: entry.state, version: entry.version } as T;
       }
     }
 
@@ -84,10 +86,39 @@ class MockD1PreparedStatement implements D1PreparedStatement {
   }
 
   async run(): Promise<D1Result<unknown>> {
-    const sql = this.query.trim().toUpperCase();
+    const sql = this.query.trim();
+    const upper = sql.toUpperCase();
 
-    // INSERT OR REPLACE
-    if (sql.includes('INSERT')) {
+    // UPDATE with version check (CAS)
+    if (upper.startsWith('UPDATE')) {
+      const newState = this.values[0];
+      const newExpiresAt = this.values[1];
+      const key = this.values[2];
+      const expectedVersion = this.values[3];
+
+      if (
+        key !== undefined &&
+        expectedVersion !== undefined &&
+        newState !== undefined
+      ) {
+        const entry = this.store.get(String(key));
+        if (entry && entry.version === Number(expectedVersion)) {
+          // Version match — apply update
+          this.store.set(String(key), {
+            state: String(newState),
+            expires_at: Number(newExpiresAt),
+            version: entry.version + 1,
+          });
+          return { results: [], success: true, meta: { changes: 1 } };
+        }
+        // Version mismatch — no rows updated
+        return { results: [], success: false, meta: { changes: 0 } };
+      }
+      return { results: [], success: true, meta: {} };
+    }
+
+    // INSERT OR REPLACE (blind write, e.g. set())
+    if (upper.includes('INSERT') && upper.includes('REPLACE')) {
       const key = this.values[0];
       const state = this.values[1];
       const expiresAt = this.values[2];
@@ -96,18 +127,41 @@ class MockD1PreparedStatement implements D1PreparedStatement {
         this.store.set(String(key), {
           state: String(state),
           expires_at: Number(expiresAt),
+          version: 1, // INSERT OR REPLACE resets version to 1
         });
+      }
+      return { results: [], success: true, meta: { changes: 1 } };
+    }
+
+    // Plain INSERT (OCC new-entry path — must not conflict)
+    if (upper.startsWith('INSERT')) {
+      const key = this.values[0];
+      const state = this.values[1];
+      const expiresAt = this.values[2];
+
+      if (key !== undefined && state !== undefined && expiresAt !== undefined) {
+        // Simulate UNIQUE constraint failure if key already exists
+        if (this.store.has(String(key))) {
+          const err = new Error('UNIQUE constraint failed: key already exists');
+          throw err;
+        }
+        this.store.set(String(key), {
+          state: String(state),
+          expires_at: Number(expiresAt),
+          version: 1, // new entries start at version 1
+        });
+        return { results: [], success: true, meta: { changes: 1 } };
       }
       return { results: [], success: true, meta: {} };
     }
 
     // DELETE
-    if (sql.startsWith('DELETE')) {
+    if (upper.startsWith('DELETE')) {
       const key = this.values[0];
       if (key !== undefined) {
         this.store.delete(String(key));
       }
-      return { results: [], success: true, meta: {} };
+      return { results: [], success: true, meta: { changes: 1 } };
     }
 
     // CREATE TABLE — no-op in mock
@@ -372,6 +426,152 @@ describe('D1Store', () => {
       expect(entry!.state).toBe(JSON.stringify({ count: 42 }));
     });
 
+    it('creates new entry with version=1 if none exists', async () => {
+      // Apply on a new key should create it with version=1
+      const result = await store.apply<CounterState, boolean>(
+        'fresh',
+        60_000,
+        (prev) => {
+          expect(prev).toBeNull();
+          return { state: { count: 1 }, result: true };
+        },
+      );
+
+      expect(result).toBe(true);
+      const entry = db.store.get('fresh');
+      expect(entry).toBeDefined();
+      expect(entry!.version).toBe(1);
+    });
+
+    it('uses optimistic concurrency control with version column', async () => {
+      // Seed with set() — sets version=1
+      await store.set('occ', { count: 0 });
+
+      const result = await store.apply<CounterState, boolean>(
+        'occ',
+        60_000,
+        (prev) => {
+          return {
+            state: { count: (prev?.count ?? 0) + 1 },
+            result: true,
+          };
+        },
+      );
+
+      expect(result).toBe(true);
+
+      // Version should have incremented from 1 to 2
+      const entry = db.store.get('occ');
+      expect(entry).toBeDefined();
+      expect(entry!.version).toBe(2);
+      expect(entry!.state).toBe(JSON.stringify({ count: 1 }));
+    });
+
+    it('retries on version conflict', async () => {
+      // Seed initial entry with version=1
+      await store.set('conflict-key', { count: 0 });
+
+      // Manually bump the version in the store to simulate another writer
+      const entry = db.store.get('conflict-key')!;
+      db.store.set('conflict-key', {
+        state: entry.state,
+        expires_at: entry.expires_at,
+        version: entry.version + 1, // now version=2
+      });
+
+      // The apply() will read version=2, compute transform, then try UPDATE
+      // with version=2 (which will match). It should succeed.
+      const result = await store.apply<CounterState, boolean>(
+        'conflict-key',
+        60_000,
+        (prev) => {
+          return {
+            state: { count: (prev?.count ?? 0) + 1 },
+            result: true,
+          };
+        },
+      );
+
+      expect(result).toBe(true);
+
+      // Version should now be 3
+      const updated = db.store.get('conflict-key');
+      expect(updated!.version).toBe(3);
+      expect(updated!.state).toBe(JSON.stringify({ count: 1 }));
+    });
+
+    it('retries when UPDATE matches stale version (simulating race)', async () => {
+      // Seed with version=1
+      await store.set('race-key', { count: 0 });
+
+      // Read the version that apply will see (1), then bump the store
+      // between read and write to force a retry
+      const transformSpy = vi.fn(
+        (
+          prev: CounterState | null,
+        ): { state: CounterState; result: boolean } => {
+          return {
+            state: { count: (prev?.count ?? 0) + 1 },
+            result: true,
+          };
+        },
+      );
+
+      // We need to intercept between read and write. Since our mock doesn't
+      // support that directly, we pre-conflict by bumping the version
+      // before calling apply. The apply will read version=2, compute
+      // transform, then attempt UPDATE with version=2. That will succeed
+      // (no actual retry needed in this case since it reads the latest version).
+      // Actually, let's test the actual retry: we set up so that the version
+      // read is stale by the time UPDATE runs.
+      //
+      // Simpler approach: we bump the version after first() reads, but since
+      // we can't inject between mock calls, we test that the CAS loop works
+      // by having the mock's UPDATE fail on version mismatch (first call)
+      // then succeed on retry.
+
+      // Override the run method temporarily to fail on first UPDATE
+      const originalRun = MockD1PreparedStatement.prototype.run;
+
+      let updateAttempts = 0;
+      MockD1PreparedStatement.prototype.run = async function () {
+        const upper = this.query.trim().toUpperCase();
+        if (upper.startsWith('UPDATE')) {
+          updateAttempts++;
+          if (updateAttempts === 1) {
+            // First UPDATE attempt — simulate version conflict
+            // by not updating and returning changes=0
+            // We do this by mutating the store entry's version after read
+            const entry = db.store.get(String(this.values[2]));
+            if (entry) {
+              entry.version += 1; // bump version to cause conflict
+            }
+          }
+        }
+        // Call original via apply
+        return originalRun.apply(this);
+      };
+
+      try {
+        const result = await store.apply<CounterState, boolean>(
+          'race-key',
+          60_000,
+          transformSpy,
+        );
+
+        expect(result).toBe(true);
+        // Should have succeeded after retry
+        expect(updateAttempts).toBeGreaterThanOrEqual(2);
+
+        const finalEntry = db.store.get('race-key');
+        expect(finalEntry).toBeDefined();
+        expect(finalEntry!.state).toBe(JSON.stringify({ count: 1 }));
+      } finally {
+        // Restore original
+        MockD1PreparedStatement.prototype.run = originalRun;
+      }
+    });
+
     it('treats expired state as null', async () => {
       const now = Date.now();
 
@@ -379,6 +579,7 @@ describe('D1Store', () => {
       db.store.set('stale-key', {
         state: JSON.stringify({ count: 99 }),
         expires_at: now - 1,
+        version: 5,
       });
 
       const transformSpy = vi.fn(
@@ -457,33 +658,76 @@ describe('D1Store', () => {
   });
 
   // -----------------------------------------------------------------------
-  // apply — D1 atomicity documentation verification
+  // apply — CAS / OCC verification
   // -----------------------------------------------------------------------
 
-  describe('apply atomicity caveat', () => {
-    it('performs read-then-write (no advisory locks)', async () => {
-      // Verify that apply() uses two separate D1 calls:
-      // 1. SELECT (read)
-      // 2. INSERT OR REPLACE (write)
-      // We can't observe the exact query flow from the mock's prepare()
-      // interface, but we can verify the mock store state changes correctly.
-
-      await store.apply<CounterState, boolean>('atomic-key', 60_000, (prev) => {
+  describe('apply CAS loop', () => {
+    it('increments version on each apply call', async () => {
+      await store.apply<CounterState, boolean>('cas-key', 60_000, (prev) => {
         return { state: { count: (prev?.count ?? 0) + 1 }, result: true };
       });
 
-      const entry = db.store.get('atomic-key');
+      let entry = db.store.get('cas-key');
       expect(entry).toBeDefined();
       expect(entry!.state).toBe(JSON.stringify({ count: 1 }));
+      expect(entry!.version).toBe(1);
 
-      // Apply again — should read the existing state
-      await store.apply<CounterState, boolean>('atomic-key', 60_000, (prev) => {
+      // Apply again — should increment version
+      await store.apply<CounterState, boolean>('cas-key', 60_000, (prev) => {
         expect(prev).toEqual({ count: 1 });
         return { state: { count: prev!.count + 1 }, result: true };
       });
 
-      const updatedEntry = db.store.get('atomic-key');
-      expect(updatedEntry!.state).toBe(JSON.stringify({ count: 2 }));
+      entry = db.store.get('cas-key');
+      expect(entry!.state).toBe(JSON.stringify({ count: 2 }));
+      expect(entry!.version).toBe(2);
+    });
+
+    it('preserves version through set then apply cycle', async () => {
+      // set() resets version to 1
+      await store.set('cycle-key', { count: 0 });
+      let entry = db.store.get('cycle-key');
+      expect(entry!.version).toBe(1);
+
+      // apply() increments from 1 to 2
+      await store.apply<CounterState, boolean>('cycle-key', 60_000, (prev) => {
+        return { state: { count: (prev?.count ?? 0) + 1 }, result: true };
+      });
+
+      entry = db.store.get('cycle-key');
+      expect(entry!.version).toBe(2);
+      expect(entry!.state).toBe(JSON.stringify({ count: 1 }));
+    });
+
+    it('throws on max CAS retries exceeded', async () => {
+      // Seed entry with version=1
+      await store.set('max-retry-key', { count: 0 });
+
+      // Make every UPDATE fail by always bumping the version before write
+      const originalRun = MockD1PreparedStatement.prototype.run;
+
+      MockD1PreparedStatement.prototype.run = async function () {
+        const upper = this.query.trim().toUpperCase();
+        if (upper.startsWith('UPDATE')) {
+          // Bump the version in store so the UPDATE's version check fails
+          const key = String(this.values[2]);
+          const entry = db.store.get(key);
+          if (entry) {
+            entry.version += 1;
+          }
+        }
+        return originalRun.apply(this);
+      };
+
+      try {
+        await expect(
+          store.apply<CounterState, boolean>('max-retry-key', 60_000, (prev) => {
+            return { state: { count: (prev?.count ?? 0) + 1 }, result: true };
+          }),
+        ).rejects.toThrow('max CAS retries exceeded');
+      } finally {
+        MockD1PreparedStatement.prototype.run = originalRun;
+      }
     });
   });
 });

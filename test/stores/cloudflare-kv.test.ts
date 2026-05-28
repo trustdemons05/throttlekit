@@ -5,8 +5,8 @@
  * without any Cloudflare SDK dependency.
  */
 
-import { describe, it, expect } from 'vitest';
-import { KVStore } from '../../src/stores/cloudflare-kv.js';
+import { describe, it, expect, vi } from 'vitest';
+import { KVStore, KV_CONSISTENCY_WARNING } from '../../src/stores/cloudflare-kv.js';
 import type { KVNamespace } from '../../src/stores/cloudflare-kv.js';
 
 // ---------------------------------------------------------------------------
@@ -191,6 +191,61 @@ describe('KVStore', () => {
       await store.set('key', 'default-prefix');
       const result = await store.get<string>('key');
       expect(result).toBe('default-prefix');
+    });
+  });
+
+  describe('consistencyWarning option', () => {
+    it('consistencyWarning option exists and can be set', () => {
+      const kv = new MockKVNamespace();
+
+      // Should not throw with consistencyWarning: false
+      const store1 = new KVStore({ kv, consistencyWarning: false });
+      expect(store1).toBeInstanceOf(KVStore);
+
+      // Should not throw with consistencyWarning: true
+      const store2 = new KVStore({ kv, consistencyWarning: true });
+      expect(store2).toBeInstanceOf(KVStore);
+
+      // Should not throw without consistencyWarning (defaults)
+      const store3 = new KVStore({ kv });
+      expect(store3).toBeInstanceOf(KVStore);
+    });
+  });
+
+  describe('write cache avoids self-stale reads', () => {
+    it('local write cache avoids self-stale reads', async () => {
+      // Mock KV where get() returns stale data (simulates eventual consistency)
+      let kvData = new Map<string, string>();
+      const kv: KVNamespace = {
+        get: vi.fn(async (key: string) => kvData.get(key) ?? null),
+        put: vi.fn(async (key: string, value: string) => {
+          // Intentionally do NOT update kvData immediately — simulate stale read
+          // The value should come from the local cache instead
+        }),
+        delete: vi.fn(async (key: string) => { kvData.delete(key); }),
+      };
+
+      const store = new KVStore({ kv, consistencyWarning: false });
+
+      // Write via apply — this should cache the value locally
+      const result = await store.apply<{ val: number }, number>('stale-test', 60_000, (prev) => {
+        const state = { val: (prev?.val ?? 0) + 1 };
+        return { state, result: state.val };
+      });
+      expect(result).toBe(1);
+
+      // Manually verify the cache hit: even though kvData is empty (simulating stale read),
+      // the get() should return the cached value
+      const cached = await store.get<{ val: number }>('stale-test');
+      expect(cached).toEqual({ val: 1 });
+    });
+  });
+
+  describe('KV_CONSISTENCY_WARNING constant', () => {
+    it('KV_CONSISTENCY_WARNING is exported and non-empty', () => {
+      expect(KV_CONSISTENCY_WARNING).toBeDefined();
+      expect(typeof KV_CONSISTENCY_WARNING).toBe('string');
+      expect(KV_CONSISTENCY_WARNING.length).toBeGreaterThan(0);
     });
   });
 });

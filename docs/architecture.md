@@ -70,9 +70,9 @@ This minimal interface means you can write a store backed by DynamoDB, SQLite, o
 
 ## Lua Parity Philosophy
 
-For Redis-backed deployments, every built-in strategy has a matching Lua script that runs the exact same logic atomically inside Redis. The JS and Lua implementations are kept in sync and verified against the same contract tests. If you can run it in-memory, you can run it in Redis with identical semantics.
+For Redis-backed deployments, the Lua-backed built-in strategies have matching scripts that run the same logic atomically inside Redis. The JS and Lua implementations are kept in sync and verified against conformance tests. If you can run a Lua-backed strategy in-memory, you can run it in Redis with matching semantics.
 
-`RedisStore` detects built-in strategies and automatically loads the matching Lua script via `setLuaStrategy()`. On the first call it uses `EVAL` to load the script; subsequent calls use `EVALSHA` for near-zero overhead. If Redis evicts the script cache, it transparently falls back to `EVAL` and re-caches the SHA.
+`RedisStore` detects most built-in strategies and automatically loads the matching Lua script via `setLuaStrategy()`. GCRA exports `gcraLua` for explicit registration, but the first-class `gcra()` factory currently uses the generic store path. On the first Lua call RedisStore uses `EVAL`; subsequent calls use `EVALSHA`. If Redis evicts the script cache, it falls back to `EVAL` and re-caches the SHA.
 
 ## Two-Tier Modes
 

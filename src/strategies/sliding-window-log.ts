@@ -61,40 +61,33 @@ export function slidingLogConsume(
   const windowStart = now - windowSizeMs;
   const log = state ?? [];
 
-  // ── Prune expired entries using binary search (O(log n)) ──
-  const firstValid = binarySearchFirstGE(log, windowStart);
-  const pruned = log.slice(firstValid);
+  // Find first live entry — survivors are log[firstLive..length)
+  const firstLive = binarySearchFirstGE(log, windowStart);
+  const liveCount = log.length - firstLive;
 
-  // ── Check if there is capacity ──
-  if (pruned.length + cost <= max) {
-    // Insert 'cost' timestamps at 'now' in sorted position
-    const insertIdx = binarySearchFirstGE(pruned, now);
-    const newEntries = Array.from({ length: cost }, () => now);
-    const newLog = [
-      ...pruned.slice(0, insertIdx),
-      ...newEntries,
-      ...pruned.slice(insertIdx),
-    ];
-
+  if (liveCount + cost <= max) {
+    // ALLOW — single slice + append (no intermediate arrays)
+    const newLog = log.slice(firstLive);        // one alloc
+    for (let i = 0; i < cost; i++) newLog.push(now); // append in-place
     return {
       state: newLog,
       result: {
         allowed: true,
         limit: max,
-        remaining: max - pruned.length - cost,
+        remaining: max - liveCount - cost,
         resetAt: now + windowSizeMs,
         retryAfterMs: 0,
       },
     };
   }
 
-  // ── Rejected ──
-  // pruned.length > 0 is guaranteed here because pruned.length + cost > max
-  // and cost >= 1 (handled at line 48), so pruned must have at least 1 element.
-  const oldest = pruned[0]!;
+  // DENY — zero alloc: reuse the log array, just update the view
+  const oldest = log[firstLive]!;
   const retryAfterMs = Math.max(0, oldest + windowSizeMs - now);
+  // Only slice if we pruned entries, otherwise reuse
+  const newState = firstLive === 0 ? log : log.slice(firstLive);
   return {
-    state: pruned,
+    state: newState,
     result: {
       allowed: false,
       limit: max,

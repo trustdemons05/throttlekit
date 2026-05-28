@@ -121,34 +121,53 @@ export function gcraConsume(
  * ARGV[4] = burst (max burst count)
  * ARGV[5] = limit (max rate)
  * ARGV[6] = ttl_ms (TTL for the key)
+ * ARGV[7] = cost (units to consume, defaults to 1)
  *
  * Returns: { allowed: 1|0, remaining: number, retryAfterMs: number }
  */
 export const gcraLua: string = `
+local cost = tonumber(ARGV[1])
+local ttlMs = tonumber(ARGV[2])
+local emission_interval = tonumber(ARGV[3])
+local burst_offset = tonumber(ARGV[4])
+local burst = tonumber(ARGV[5])
+local limit = tonumber(ARGV[6])
+
+local time = redis.call('TIME')
+local now = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+
 local tat = redis.call('GET', KEYS[1])
 if not tat then
-    tat = ARGV[3]
+    tat = now
+else
+    tat = tonumber(tat)
 end
 
-local now = tonumber(ARGV[3])
-local emission_interval = tonumber(ARGV[1])
-local burst_offset = tonumber(ARGV[2])
-local burst = tonumber(ARGV[4])
-local limit = tonumber(ARGV[5])
-local ttl = tonumber(ARGV[6])
+if cost > limit then
+    redis.call('SET', KEYS[1], tat, 'PX', ttlMs)
+    return {0, limit, limit, now, 2147483647}
+end
 
-local new_tat = math.max(now, tonumber(tat)) + emission_interval
+if cost <= 0 then
+    local headroom = burst_offset - (tat - now)
+    local remaining = math.floor(headroom / emission_interval)
+    if remaining > burst then remaining = burst end
+    if remaining < 0 then remaining = 0 end
+    return {1, limit, remaining, now + burst_offset, 0}
+end
+
+local new_tat = math.max(now, tat) + emission_interval * cost
 
 if new_tat - burst_offset <= now then
-    redis.call('SET', KEYS[1], new_tat, 'PX', ttl)
+    redis.call('SET', KEYS[1], new_tat, 'PX', ttlMs)
     local headroom = burst_offset - (new_tat - now)
     local remaining = math.floor(headroom / emission_interval)
     if remaining > burst then remaining = burst end
     if remaining < 0 then remaining = 0 end
-    return {1, remaining, 0}
+    return {1, limit, remaining, now + burst_offset, 0}
 else
     local retryAfter = math.max(0, new_tat - burst_offset - now)
-    return {0, 0, retryAfter}
+    return {0, limit, 0, now + retryAfter, retryAfter}
 end
 `.trim();
 

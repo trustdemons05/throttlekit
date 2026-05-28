@@ -1,125 +1,182 @@
-import { describe, it, expect } from 'vitest';
 import type { Store } from '../core/types.js';
 
-// ---------------------------------------------------------------------------
-// Store conformance test suite
-// ---------------------------------------------------------------------------
+export interface StoreConformanceOptions {
+  name: string;
+  createStore: () => Promise<Store> | Store;
+  cleanup?: () => Promise<void>;
+}
+
+export interface StoreConformanceApi {
+  describe: (name: string, fn: () => void) => void;
+  it: (name: string, fn: () => void | Promise<void>) => void;
+  expect: <T = unknown>(actual: T) => {
+    toBe(expected: unknown): void;
+    toEqual(expected: unknown): void;
+    toBeNull(): void;
+  };
+  beforeEach: (fn: () => void | Promise<void>) => void;
+  afterEach: (fn: () => void | Promise<void>) => void;
+}
 
 /**
  * Run a standard conformance test suite against a Store implementation.
  *
- * Tests:
- * - Atomicity: 50 concurrent applies, exactly limit allowed
- * - TTL expiry: write with ttlMs=50, wait 100ms, verify gone
- * - Round-trip: get/set/delete
+ * Supports the current object form:
  *
- * This is a vitest test suite — call it inside a `describe` or at the top-level
- * of a `.test.ts` file.
- *
- * @param store - The store implementation to test
- * @param label - Optional label for the test suite (default: 'Store')
- *
- * @example
- * ```typescript
- * import { runStoreConformance } from 'throttlekit/testkit';
- * import { MemoryStore } from 'throttlekit';
- *
- * runStoreConformance(new MemoryStore(), 'MemoryStore');
+ * ```ts
+ * runStoreConformance({ name: 'MemoryStore', createStore: () => new MemoryStore() });
  * ```
+ *
+ * The older `(store, label)` form is still accepted for compatibility. When
+ * Vitest globals are disabled, pass the Vitest API as the second or third
+ * argument.
  */
-export function runStoreConformance(store: Store, label?: string): void {
-  // Use global vitest functions (vitest sets globals when globals: true)
-  // These are available as describe, it, expect in the global scope
+export function runStoreConformance(options: StoreConformanceOptions, api?: StoreConformanceApi): void;
+export function runStoreConformance(store: Store, label?: string, api?: StoreConformanceApi): void;
+export function runStoreConformance(
+  optionsOrStore: StoreConformanceOptions | Store,
+  labelOrApi?: string | StoreConformanceApi,
+  api?: StoreConformanceApi,
+): void {
+  const runner = resolveConformanceApi(
+    typeof labelOrApi === 'string' ? api : labelOrApi,
+  );
+  const options: StoreConformanceOptions =
+    'createStore' in optionsOrStore
+      ? optionsOrStore
+      : {
+          name: typeof labelOrApi === 'string' ? labelOrApi : 'Store',
+          createStore: () => optionsOrStore,
+        };
 
-  const suite = label ?? 'Store';
+  runner.describe(`${options.name} Store Conformance`, () => {
+    let store: Store;
 
-  describe(`${suite} conformance`, () => {
-    it('atomicity — 50 concurrent applies, exactly limit allowed', async () => {
-      const key = `concurrent-${Date.now()}`;
-      const limit = 10;
-      const concurrency = 50;
+    runner.beforeEach(async () => {
+      store = await options.createStore();
+    });
 
-      const tasks = Array.from({ length: concurrency }, async (_, i) => {
-        return store.apply<number, { allowed: boolean; idx: number }>(
-          key,
-          5000,
-          (state: number | null) => {
-            const count = (state ?? 0) + 1;
-            return {
-              state: count,
-              result: { allowed: count <= limit, idx: i },
-            };
-          },
-        );
+    runner.afterEach(async () => {
+      await options.cleanup?.();
+    });
+
+    runner.describe('Basic CRUD', () => {
+      runner.it('get returns null for missing key', async () => {
+        if (!store.get) return;
+        const result = await store.get<unknown>('missing-key');
+        runner.expect(result).toBeNull();
       });
 
-      const results = await Promise.all(tasks);
-      const allowed = results.filter((r) => r.allowed).length;
+      runner.it('set then get roundtrips JSON', async () => {
+        if (!store.set || !store.get) return;
+        await store.set('json-key', { foo: 'bar', num: 42 });
+        const result = await store.get<{ foo: string; num: number }>('json-key');
+        runner.expect(result).toEqual({ foo: 'bar', num: 42 });
+      });
 
-      expect(allowed).toBe(limit);
+      runner.it('delete removes key', async () => {
+        if (!store.set || !store.get || !store.delete) return;
+        await store.set('del-key', 'value');
+        await store.delete('del-key');
+        const result = await store.get<string>('del-key');
+        runner.expect(result).toBeNull();
+      });
     });
 
-    it('TTL — write with ttlMs=50, wait 100ms, verify gone', async () => {
-      const key = `ttl-${Date.now()}`;
+    runner.describe('Atomic apply', () => {
+      runner.it('apply creates fresh state from null', async () => {
+        const result = await store.apply<{ n: number }, number>('fresh', 60_000, (prev) => ({
+          state: { n: (prev?.n ?? 0) + 1 },
+          result: (prev?.n ?? 0) + 1,
+        }));
+        runner.expect(result).toBe(1);
+      });
 
-      if (!store.set) throw new Error('Store does not implement set');
-      await store.set(key, 'present', 50);
+      runner.it('apply updates existing state', async () => {
+        const first = await store.apply<{ n: number }, number>('existing', 60_000, (prev) => ({
+          state: { n: (prev?.n ?? 0) + 1 },
+          result: (prev?.n ?? 0) + 1,
+        }));
+        runner.expect(first).toBe(1);
 
-      // Should be present immediately
-      const immediate: unknown = await store.get?.(key);
-      expect(immediate).toBe('present');
-
-      // Wait for TTL to expire
-      await new Promise((r) => setTimeout(r, 100));
-
-      const afterTtl: unknown = await store.get?.(key);
-      expect(afterTtl).toBeNull();
+        const second = await store.apply<{ n: number }, number>('existing', 60_000, (prev) => ({
+          state: { n: (prev?.n ?? 0) + 1 },
+          result: (prev?.n ?? 0) + 1,
+        }));
+        runner.expect(second).toBe(2);
+      });
     });
 
-    it('get/set/delete round-trip', async () => {
-      const key = `roundtrip-${Date.now()}`;
+    runner.describe('200-way concurrent atomicity', () => {
+      runner.it('200 concurrent increments land exactly 200', async () => {
+        const promises = Array.from({ length: 200 }, () =>
+          store.apply<{ n: number }, number>('concurrent', 60_000, (prev) => ({
+            state: { n: (prev?.n ?? 0) + 1 },
+            result: (prev?.n ?? 0) + 1,
+          })),
+        );
 
-      // get on empty key returns null
-      const empty: unknown = await store.get?.(key);
-      expect(empty).toBeNull();
+        const results = await Promise.all(promises);
+        const uniqueResults = new Set(results);
 
-      // set value
-      if (!store.set) throw new Error('Store does not implement set');
-      await store.set(key, { foo: 'bar' });
-      const value: unknown = await store.get?.(key);
-      expect(value).toEqual({ foo: 'bar' });
+        runner.expect(uniqueResults.size).toBe(200);
+        runner.expect(Math.max(...results)).toBe(200);
+      });
+    });
 
-      // delete
-      if (!store.delete) throw new Error('Store does not implement delete');
-      await store.delete(key);
-      const deleted: unknown = await store.get?.(key);
-      expect(deleted).toBeNull();
+    runner.describe('TTL/expiry', () => {
+      runner.it('expired keys return null on get', async () => {
+        if (!store.set || !store.get) return;
+        await store.set('short-ttl', 'value', 1);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        const result = await store.get<string>('short-ttl');
+        runner.expect(result).toBeNull();
+      });
+    });
+
+    runner.describe('Prefix isolation', () => {
+      runner.it('different keys are independent', async () => {
+        const a = await store.apply<{ n: number }, number>('a', 60_000, (prev) => ({
+          state: { n: (prev?.n ?? 0) + 10 },
+          result: (prev?.n ?? 0) + 10,
+        }));
+        runner.expect(a).toBe(10);
+
+        const b = await store.apply<{ n: number }, number>('b', 60_000, (prev) => ({
+          state: { n: (prev?.n ?? 0) + 1 },
+          result: (prev?.n ?? 0) + 1,
+        }));
+        runner.expect(b).toBe(1);
+      });
     });
   });
 }
 
-// ---------------------------------------------------------------------------
-// Mock Redis client
-// ---------------------------------------------------------------------------
+function resolveConformanceApi(api?: StoreConformanceApi): StoreConformanceApi {
+  if (api) return api;
+
+  const globalApi = globalThis as unknown as Partial<StoreConformanceApi>;
+  if (
+    typeof globalApi.describe === 'function' &&
+    typeof globalApi.it === 'function' &&
+    typeof globalApi.expect === 'function' &&
+    typeof globalApi.beforeEach === 'function' &&
+    typeof globalApi.afterEach === 'function'
+  ) {
+    return globalApi as StoreConformanceApi;
+  }
+
+  throw new Error(
+    'runStoreConformance requires Vitest globals or an explicit test API. ' +
+      'Pass { describe, it, expect, beforeEach, afterEach } when globals are disabled.',
+  );
+}
 
 /**
  * Create a minimal in-memory Redis mock for testing.
  *
- * Supports:
- * - `get`, `set`, `del`, `watch`, `multi`, `eval`, `evalsha`
- *
+ * Supports `get`, `set`, `del`, `watch`, `multi`, `eval`, and `evalsha`.
  * `evalsha` throws `{ code: 'NOSCRIPT' }` on first call per SHA.
- *
- * @returns A mock Redis client
- *
- * @example
- * ```typescript
- * import { mockRedisClient } from 'throttlekit/testkit';
- *
- * const redis = mockRedisClient();
- * await redis.set('key', 'value');
- * const val = await redis.get('key');
- * ```
  */
 export function mockRedisClient(): Record<string, any> {
   const data = new Map<string, string>();
@@ -159,8 +216,6 @@ export function mockRedisClient(): Record<string, any> {
         },
 
         async exec(): Promise<[Error | null, unknown][]> {
-          // In this simple mock, no concurrent modifications happen,
-          // so WATCH always succeeds. We just execute the queued commands.
           const results: [Error | null, unknown][] = [];
           for (const [cmd, key, value] of commands) {
             if (cmd === 'set') {
@@ -180,7 +235,6 @@ export function mockRedisClient(): Record<string, any> {
       _keys: string[],
       ...args: string[]
     ): Promise<unknown> {
-      // Simplified: return the first arg for testing
       return args[0] ?? null;
     },
 

@@ -85,6 +85,10 @@
     "./token-budget": {
       "import": "./dist/token-budget/index.js",
       "require": "./dist/token-budget/index.cjs"
+    },
+    "./testkit": {
+      "import": "./dist/testkit/index.js",
+      "require": "./dist/testkit/index.cjs"
     }
   },
   "bin": {

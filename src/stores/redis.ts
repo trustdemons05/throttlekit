@@ -302,6 +302,7 @@ class RedisStore implements Store {
   private maxRetries = 3;
   private luaScript: string | null = null;
   private luaSha: string | null = null;
+  private luaExtraArgs: string[] = [];
 
   constructor(redis: any) {
     this.redis = redis;
@@ -311,8 +312,9 @@ class RedisStore implements Store {
    * Configure a Lua script for the fast path.
    * Called by rateLimit() factory when a built-in strategy is used.
    */
-  setLuaStrategy(luaScript: string): void {
+  setLuaStrategy(luaScript: string, ...extraArgs: string[]): void {
     this.luaScript = luaScript;
+    this.luaExtraArgs = extraArgs;
     this.luaSha = null; // Invalidate cached SHA
   }
 
@@ -321,6 +323,7 @@ class RedisStore implements Store {
    */
   clearLuaStrategy(): void {
     this.luaScript = null;
+    this.luaExtraArgs = [];
     this.luaSha = null;
   }
 
@@ -355,19 +358,19 @@ class RedisStore implements Store {
    * Apply rate-limit check with explicit cost via Lua fast path.
    * Used by the limiter when Lua is configured.
    */
-  async applyWithLua(key: string, ttlMs: number, cost: number): Promise<RateLimitResult> {
+  async applyWithLua(key: string, ttlMs: number, cost: number, ...extraArgs: string[]): Promise<RateLimitResult> {
     // The luaScript must already be configured via setLuaStrategy.
     // The cost is passed to the Lua script as ARGV[1].
     // ARGV[2] is ttlMs.
-    // ARGV[3+] are the strategy-specific params stored internally.
+    // ARGV[3+] are the strategy-specific params stored internally or passed here.
     // For applyWithLua we call evalLua which passes cost as the first ARGV.
-    return this.evalLua(key, ttlMs, cost);
+    return this.evalLua(key, ttlMs, cost, ...extraArgs);
   }
 
   /**
    * Execute the configured Lua script via EVALSHA (or EVAL on NOSCRIPT).
    */
-  private async evalLua(key: string, ttlMs: number, cost?: number): Promise<RateLimitResult> {
+  private async evalLua(key: string, ttlMs: number, cost?: number, ...extraArgs: string[]): Promise<RateLimitResult> {
     const script = this.luaScript!;
 
     // Cache SHA on first use
@@ -377,6 +380,7 @@ class RedisStore implements Store {
 
     // Build args: cost is provided or default to 1
     const actualCost = cost ?? 1;
+    const allArgs = [String(actualCost), String(ttlMs), ...this.luaExtraArgs, ...extraArgs];
 
     // Try EVALSHA first
     try {
@@ -384,8 +388,7 @@ class RedisStore implements Store {
         this.luaSha,
         1,
         key,
-        String(actualCost),
-        String(ttlMs),
+        ...allArgs,
       );
 
       return parseLuaResult(result);
@@ -396,8 +399,7 @@ class RedisStore implements Store {
           script,
           1,
           key,
-          String(actualCost),
-          String(ttlMs),
+          ...allArgs,
         );
 
         // Re-cache SHA
@@ -471,13 +473,14 @@ class RedisStore implements Store {
  * Lua returns: [allowed (0/1), limit, remaining, resetAt, retryAfterMs]
  */
 function parseLuaResult(result: number[]): RateLimitResult {
-  // Lua script contract guarantees exactly 5 return values
+  // Lua script contract guarantees at least the allowed flag;
+  // remaining fields default to 0 for backwards compatibility with older scripts.
   return {
     allowed: result[0] === 1,
-    limit: result[1]!,
-    remaining: result[2]!,
-    resetAt: result[3]!,
-    retryAfterMs: result[4]!,
+    limit: result[1] ?? 0,
+    remaining: result[2] ?? 0,
+    resetAt: result[3] ?? 0,
+    retryAfterMs: result[4] ?? 0,
   };
 }
 

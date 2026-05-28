@@ -10,6 +10,8 @@ export interface AdaptiveThrottleOptions {
   buckets?: number;
   /** Clock for deterministic testing */
   clock?: Clock;
+  /** Random source for deterministic testing (default Math.random) */
+  rng?: () => number;
 }
 
 export interface AdaptiveThrottle {
@@ -49,6 +51,7 @@ export function adaptiveThrottle(options?: AdaptiveThrottleOptions): AdaptiveThr
     windowMs = 30_000,
     buckets: bucketCount = 10,
     clock = new SystemClock(),
+    rng = Math.random,
   } = options ?? {};
 
   const bucketInterval = Math.ceil(windowMs / bucketCount);
@@ -87,27 +90,22 @@ export function adaptiveThrottle(options?: AdaptiveThrottleOptions): AdaptiveThr
 
   const api: AdaptiveThrottle = {
     request(priority?: number): boolean {
-      // Recompute probability based on current state (without modifying it)
       const now = clock.now();
-      // Temporarily advance window by filtering old buckets
-      const cutoff = now - windowMs;
-      const currentBuckets = buckets.filter((b) => b.ts >= cutoff);
-      const reqs = currentBuckets.reduce((sum, b) => sum + b.requests, 0);
-      const accs = currentBuckets.reduce((sum, b) => sum + b.accepts, 0);
-      const p = reqs === 0 ? 0 : Math.max(0, (reqs - k * accs) / (reqs + 1));
+      const cb = currentBucket(now);
+      const p = computeP();
+      cb.requests += 1;
 
       _dropProbability = p;
 
       if (p <= 0) return true;
 
       const effectiveP = priority !== undefined ? p / Math.max(0.001, priority) : p;
-      return Math.random() >= effectiveP;
+      return rng() >= effectiveP;
     },
 
     record(accepted: boolean): void {
       const now = clock.now();
       const cb = currentBucket(now);
-      cb.requests += 1;
       if (accepted) {
         cb.accepts += 1;
       }

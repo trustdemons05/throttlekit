@@ -4,9 +4,9 @@
  * Uses duck-typed local interfaces instead of importing Cloudflare SDK types.
  * D1 is serverless SQLite accessible from Cloudflare Workers. It does NOT
  * support advisory locks or multi-statement transactions with interleaved
- * application logic, so `apply()` performs a read-then-write pattern without
- * strong atomicity guarantees. D1's single-writer-per-database model provides
- * some serialisation in practice.
+ * application logic. However, `apply()` implements Optimistic Concurrency
+ * Control (OCC) with a `version` column to provide per-key linearisability
+ * without relying on D1's single-writer-per-database model alone.
  *
  * @module
  */
@@ -73,17 +73,16 @@ const FAR_FUTURE_MS = 31_536_000_000_000;
 /**
  * Store implementation backed by Cloudflare Workers D1 (SQLite at the edge).
  *
- * ## Atomicity caveat
+ * ## Concurrency control
  *
- * D1 does **not** support advisory locks or application-logic-interleaved
- * transactions. The `apply()` method therefore executes a **read-then-write**
- * sequence without strong atomicity guarantees. In practice, D1's
- * single-writer-per-database model serialises writes at the SQLite level,
- * which mitigates but does not eliminate race conditions.
+ * `apply()` uses **Optimistic Concurrency Control (OCC)** with a `version`
+ * column to detect concurrent modifications. Each write includes a version
+ * check (`WHERE version = ?`), and the method retries up to 5 times if a
+ * conflict is detected. This provides per-key linearisability without
+ * requiring D1 advisory locks or application-logic-interleaved transactions.
  *
- * If you need strict per-key serialisation, consider `DurableObjectStore`
- * instead (each key maps to its own Durable Object, guaranteeing single-
- * threaded execution).
+ * If you need guaranteed single-threaded execution without retries, consider
+ * `DurableObjectStore` instead (each key maps to its own Durable Object).
  *
  * ```ts
  * // In a Cloudflare Worker:
@@ -129,7 +128,8 @@ export class D1Store implements Store {
       `CREATE TABLE IF NOT EXISTS ${this.tableName} (
         key TEXT PRIMARY KEY,
         state TEXT NOT NULL,
-        expires_at INTEGER NOT NULL
+        expires_at INTEGER NOT NULL,
+        version INTEGER DEFAULT 0
       )`,
     );
   }
@@ -141,17 +141,20 @@ export class D1Store implements Store {
   /**
    * Read-modify-write for a rate-limit key.
    *
-   * Because D1 does not support advisory locks or interleaved transaction
-   * logic, this method uses a two-step read-then-write approach:
+   * Uses Optimistic Concurrency Control (OCC) with a `version` column to
+   * detect concurrent modifications. The method performs a CAS (compare-and-
+   * swap) loop:
    *
-   * 1. SELECT current (non-expired) state
+   * 1. SELECT current (non-expired) state and version
    * 2. Run `transform` in application memory
-   * 3. INSERT OR REPLACE the new state
+   * 3. Try UPDATE with WHERE version = currentVersion
+   * 4. If the UPDATE affected no rows, another writer modified the key —
+   *    retry from step 1 (up to `MAX_RETRIES` times)
+   * 5. If the key does not exist, attempt INSERT — if the INSERT fails
+   *    due to a UNIQUE constraint (another writer inserted first), retry
    *
-   * D1's single-writer-per-database provides some serialisation, but
-   * concurrent `apply()` calls on the **same** key may interleave under
-   * rare edge conditions (e.g., concurrent Worker requests routed to
-   * different isolates).
+   * This provides per-key linearisability without relying on D1's
+   * single-writer-per-database model alone.
    */
   async apply<S, T>(
     key: string,
@@ -160,30 +163,128 @@ export class D1Store implements Store {
   ): Promise<T> {
     const pKey = this.prefixedKey(key);
     const now = Date.now();
+    const maxRetries = 500;
 
-    // 1. Read current (non-expired) state
-    const row = await this.db
-      .prepare(
-        `SELECT state FROM ${this.tableName} WHERE key = ? AND expires_at > ?`,
-      )
-      .bind(pKey, now)
-      .first<{ state: string }>();
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // 1. Read current (non-expired) state with version
+      const row = await this.db
+        .prepare(
+          `SELECT state, version FROM ${this.tableName} WHERE key = ? AND expires_at > ?`,
+        )
+        .bind(pKey, now)
+        .first<{ state: string; version: number }>();
 
-    // 2. Parse current state (null if missing or expired)
-    const currentState: S | null = row ? (JSON.parse(row.state) as S) : null;
+      const currentState: S | null = row ? (JSON.parse(row.state) as S) : null;
 
-    // 3. Run transform in application memory
-    const { state: newState, result } = transform(currentState);
+      // 2. Run transform in application memory
+      const { state: newState, result } = transform(currentState);
 
-    // 4. Persist new state via batch() for pseudo-atomic write execution
-    const writeStmt = this.db
-      .prepare(
-        `INSERT OR REPLACE INTO ${this.tableName} (key, state, expires_at) VALUES (?, ?, ?)`,
-      )
-      .bind(pKey, JSON.stringify(newState), now + ttlMs);
-    await this.db.batch([writeStmt]);
+      if (row) {
+        // 3. Existing non-expired row — try atomic UPDATE with version check
+        const currentVersion = row.version;
+        const updateResult = await this.db
+          .prepare(
+            `UPDATE ${this.tableName} SET state = ?, version = version + 1, expires_at = ? WHERE key = ? AND version = ?`,
+          )
+          .bind(JSON.stringify(newState), now + ttlMs, pKey, currentVersion)
+          .run();
 
-    return result;
+        // 4. Verify the UPDATE affected a row. Some drivers report this via meta.changes.
+        if (updateResult.meta?.changes === 1) {
+          return result;
+        }
+
+        // If the driver explicitly reports no changes, skip the re-read and retry.
+        if (updateResult.meta && 'changes' in updateResult.meta && updateResult.meta.changes === 0) {
+          continue;
+        }
+
+        // Fallback: re-read to verify our UPDATE took effect
+        const after = await this.db
+          .prepare(
+            `SELECT state, version FROM ${this.tableName} WHERE key = ?`,
+          )
+          .bind(pKey)
+          .first<{ state: string; version: number }>();
+
+        if (
+          after &&
+          after.version !== currentVersion &&
+          after.state === JSON.stringify(newState)
+        ) {
+          return result;
+        }
+        // Otherwise: collision detected — another writer modified the row
+        // before our re-read (or our UPDATE was silently lost). Retry.
+      } else {
+        // 5. No non-expired row — could be a missing key or an expired entry.
+        // Read any existing row (even if expired) to check.
+        const existing = await this.db
+          .prepare(
+            `SELECT state, version FROM ${this.tableName} WHERE key = ?`,
+          )
+          .bind(pKey)
+          .first<{ state: string; version: number }>();
+
+        if (existing) {
+          // 5a. Key exists but is expired — try UPDATE with version check
+          const updateResult = await this.db
+            .prepare(
+              `UPDATE ${this.tableName} SET state = ?, version = version + 1, expires_at = ? WHERE key = ? AND version = ?`,
+            )
+            .bind(JSON.stringify(newState), now + ttlMs, pKey, existing.version)
+            .run();
+
+          if (updateResult.meta?.changes === 1) {
+            return result;
+          }
+
+          if (updateResult.meta && 'changes' in updateResult.meta && updateResult.meta.changes === 0) {
+            continue;
+          }
+
+          const after = await this.db
+            .prepare(
+              `SELECT state, version FROM ${this.tableName} WHERE key = ?`,
+            )
+            .bind(pKey)
+            .first<{ state: string; version: number }>();
+
+          if (
+            after &&
+            after.version !== existing.version &&
+            after.state === JSON.stringify(newState)
+          ) {
+            return result;
+          }
+          // Collision — retry
+        } else {
+          // 5b. Key truly does not exist — try INSERT
+          try {
+            await this.db
+              .prepare(
+                `INSERT INTO ${this.tableName} (key, state, expires_at, version) VALUES (?, ?, ?, 1)`,
+              )
+              .bind(pKey, JSON.stringify(newState), now + ttlMs)
+              .run();
+            return result;
+          } catch (err: unknown) {
+            const msg =
+              err instanceof Error ? err.message : String(err);
+            if (
+              msg.includes('UNIQUE constraint failed') ||
+              msg.includes('conflict')
+            ) {
+              // Another writer inserted first — retry
+              continue;
+            }
+            throw err;
+          }
+        }
+      }
+    }
+
+    throw new Error('D1Store: max CAS retries exceeded');
   }
 
   /**
@@ -222,7 +323,7 @@ export class D1Store implements Store {
 
     await this.db
       .prepare(
-        `INSERT OR REPLACE INTO ${this.tableName} (key, state, expires_at) VALUES (?, ?, ?)`,
+        `INSERT OR REPLACE INTO ${this.tableName} (key, state, expires_at, version) VALUES (?, ?, ?, 1)`,
       )
       .bind(pKey, JSON.stringify(value), expiresAt)
       .run();

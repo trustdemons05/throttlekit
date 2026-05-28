@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { runStoreConformance, mockRedisClient } from '../../src/testkit/index.js';
+import { mockRedisClient } from '../../src/testkit/index.js';
+import { runStoreConformance } from './store-conformance.js';
 import { MemoryStore } from '../../src/stores/memory-store.js';
 
 // Register the conformance suite for MemoryStore
