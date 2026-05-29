@@ -38,9 +38,9 @@
 |------------|--------|-------|
 | Token bucket | ✅ | |
 | Fixed window | ✅ | |
-| Sliding window (log) | ✅ | |
-| Sliding window (counter) | ✅ | |
-| Sliding window (subdivided buckets) | ✅ | |
+| Sliding window | ✅ | |
+| Sliding window  | ✅ | |
+| Sliding window  | ✅ | |
 | GCRA | ✅ | |
 | Leaky bucket | ✅ | |
 | Adaptive concurrency | ✅ | |
